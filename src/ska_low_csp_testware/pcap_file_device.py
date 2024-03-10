@@ -53,7 +53,7 @@ class PcapFileWatcher(Device, FileSystemEventHandler):
         pcap_file_path = os.path.join(self.pcap_dir, pcap_file_name)  # type: ignore
         properties = {"pcap_file_path": [pcap_file_path]}
         try:
-            Util.get_database().put_device_property(dev_name, properties)
+            Util.instance().get_database().put_device_property(dev_name, properties)
         except Exception:
             self.logger.error("Failed to fill device properties", exc_info=True)
 
