@@ -35,6 +35,18 @@ ska-low-csp-testware:
         - mountPath: /pcap
           name: pcap-files
           readOnly: true
+    pcap-helper:
+      nodeSelector:
+        kubernetes.io/hostname: clp-k8s-fpga-worker-1
+      extraVolumes:
+        - name: pcap-files
+          hostPath:
+            path: /mnt/ssd/pcap/output
+            type: Directory
+      extraVolumeMounts:
+        - mountPath: /pcap
+          name: pcap-files
+          readOnly: true
   tolerations:
     - key: node-role.skatelescope.org/fpga-worker
       value: "true"

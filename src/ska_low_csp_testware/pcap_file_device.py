@@ -1,7 +1,9 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring
 
 import logging
+import os
 
+from tango import Util
 from tango.server import Device, device_property, run
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
@@ -28,8 +30,23 @@ class PcapFileWatcher(Device, FileSystemEventHandler):
         self.logger.warning("Watcher stopped")
         super().delete_device()
 
-    def on_any_event(self, event: FileSystemEvent) -> None:
-        self.logger.warning(event)
+    def on_created(self, event: FileSystemEvent) -> None:
+        self.logger.warning("Creating new device to represent %s", event.src_path)
+        Util.instance().create_device(
+            "PcapFile",
+            f"test/pcap-file/{os.path.basename(event.src_path)}",
+            cb=self._fill_device_properties,
+        )
+
+    def on_deleted(self, event: FileSystemEvent) -> None:
+        self.logger.warning("Removing device representing %s", event.src_path)
+        Util.instance().delete_device("PcapFile", f"test/pcap-file/{os.path.basename(event.src_path)}")
+
+    def _fill_device_properties(self, dev_name: str) -> None:
+        pcap_file_name = dev_name.removeprefix("test/pcap-file/")
+        pcap_file_path = os.path.join(self.pcap_dir, pcap_file_name)  # type: ignore
+        properties = {"pcap_file_path": pcap_file_path}
+        Util.get_database().put_device_property(dev_name, properties)
 
 
 class PcapFile(Device):
@@ -38,6 +55,7 @@ class PcapFile(Device):
     def init_device(self):
         super().init_device()
         self.logger = logging.getLogger(self.get_name())
+        self.logger.warning("I'm representing %s", self.pcap_file_path)
 
 
 def main(args=None, **kwargs):

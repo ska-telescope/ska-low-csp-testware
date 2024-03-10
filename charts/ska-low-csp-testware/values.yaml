@@ -102,6 +102,10 @@ deviceServers:
             - name: PcapFileWatcher
               devices:
                 - name: "test/pcap-file-watcher/0"
+                  properties:
+                    - name: "pcap_dir"
+                      values:
+                        - "/pcap"
             - name: PcapFile
               devices: []
     depends_on:
