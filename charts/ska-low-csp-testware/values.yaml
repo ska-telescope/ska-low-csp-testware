@@ -62,32 +62,6 @@ resources:
     memory: 16Gi
 
 deviceServers:
-  vis-spead-unpacker:
-    name: "vis-spead-unpacker-{{.Release.Name}}"
-    function: vis-spead-unpacker
-    domain: ska-low-csp-testware
-    instances: ["1"]
-    command: "vis_spead_unpacker"
-    server:
-      name: "vis_spead_unpacker"
-      instances:
-        - name: "1"
-          classes:
-            - name: "VisSpeadUnpacker"
-              devices:
-                - name: "low-csp-test/vis-spead-unpacker/1"
-                  properties:
-                    - name: "pcap_dir"
-                      values:
-                        - "/pcap"
-    depends_on:
-      - device: sys/database/2
-    image:
-      registry: "{{.Values.image.registry}}"
-      image: "{{.Values.image.image}}"
-      tag: "{{.Values.image.tag | default .Chart.AppVersion}}"
-      pullPolicy: "{{.Values.image.pullPolicy}}"
-
   pcap-helper:
     name: "pcap-helper-{{.Release.Name}}"
     function: testing

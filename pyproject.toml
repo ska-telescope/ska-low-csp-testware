@@ -7,7 +7,6 @@ license = "BSD-3-Clause"
 readme = "README.md"
 
 [tool.poetry.scripts]
-vis_spead_unpacker = 'ska_low_csp_testware.vis_spead_unpacker_device:main'
 pcap_file_device = 'ska_low_csp_testware.pcap_file_device:main'
 
 [[tool.poetry.source]]
