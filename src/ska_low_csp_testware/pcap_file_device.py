@@ -29,8 +29,11 @@ class PcapFileWatcher(Device, FileSystemEventHandler):
         self.observer.start()
         self.logger.warning("Watcher started")
         for f in os.listdir(self.pcap_dir):
+            self.logger.warning("Found existing file %s", f)
             if os.path.isfile(f):
-                self._create_pcap_file_device(os.path.basename(f))
+                self._create_pcap_file_device(f)
+            else:
+                self.logger.warning("%s is not a regular file, skipping", f)
 
     def delete_device(self):
         self.logger.warning("Stop watching directory %s", self.pcap_dir)
@@ -39,10 +42,11 @@ class PcapFileWatcher(Device, FileSystemEventHandler):
         self.logger.warning("Watcher stopped")
         super().delete_device()
 
-    def _create_pcap_file_device(self, file_name: str) -> None:
-        if not file_name.endswith(".pcap"):
+    def _create_pcap_file_device(self, file_path: str) -> None:
+        if not file_path.endswith(".pcap"):
             return
 
+        file_name = os.path.basename(file_path)
         dev_name = f"test/pcap-file/{file_name}"
         self.logger.warning("Creating device %s", dev_name)
 
@@ -50,16 +54,17 @@ class PcapFileWatcher(Device, FileSystemEventHandler):
             Util.instance().create_device(
                 "PcapFile",
                 dev_name,
-                cb=functools.partial(self._create_pcap_file_device_properties, file_name),
+                cb=functools.partial(self._create_pcap_file_device_properties, file_path),
             )
         except Exception:
             self.logger.error("Failed to create device %s", dev_name, exc_info=True)
 
-    def _create_pcap_file_device_properties(self, file_name: str, dev_name: str) -> None:
+    def _create_pcap_file_device_properties(self, file_path: str, dev_name: str) -> None:
         db = Util.instance().get_database()
-        db.put_device_property(dev_name, {"pcap_file_path": [os.path.join(self.pcap_dir, file_name)]})
+        db.put_device_property(dev_name, {"pcap_file_path": [file_path]})
 
-    def _remove_pcap_file_device(self, file_name: str) -> None:
+    def _remove_pcap_file_device(self, file_path: str) -> None:
+        file_name = os.path.basename(file_path)
         dev_name = f"test/pcap-file/{file_name}"
         self.logger.warning("Removing device %s", dev_name)
         try:
