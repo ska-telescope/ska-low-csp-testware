@@ -88,21 +88,21 @@ deviceServers:
       tag: "{{.Values.image.tag | default .Chart.AppVersion}}"
       pullPolicy: "{{.Values.image.pullPolicy}}"
 
-  dynamic:
-    name: "dynamic-{{.Release.Name}}"
+  pcap-helper:
+    name: "pcap-helper-{{.Release.Name}}"
     function: testing
     domain: ska-low-csp-testware
     instances: ["1"]
-    command: dynamic_device
+    command: "pcap_file_device"
     server:
-      name: dynamic_device
+      name: "pcap_file_device"
       instances:
         - name: "1"
           classes:
-            - name: Parent
+            - name: PcapFileWatcher
               devices:
-                - name: test/parent/0
-            - name: Child
+                - name: "test/pcap-file-watcher/0"
+            - name: PcapFile
               devices: []
     depends_on:
       - device: sys/database/2
