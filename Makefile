@@ -12,7 +12,6 @@ PROJECT = ska-low-csp-testware
 
 # Override vars for python targets
 PYTHON_LINE_LENGTH = 127
-PYTHON_TEST_FILE = src
 
 K8S_CHART ?= test-parent
 K8S_CHARTS = $(K8S_CHART)
