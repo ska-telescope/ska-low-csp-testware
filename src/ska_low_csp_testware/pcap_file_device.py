@@ -28,12 +28,10 @@ class PcapFileWatcher(Device, FileSystemEventHandler):
         self.observer.schedule(self, self.pcap_dir)
         self.observer.start()
         self.logger.warning("Watcher started")
-        for f in os.listdir(self.pcap_dir):
-            self.logger.warning("Found existing file %s", f)
-            if os.path.isfile(f):
-                self._create_pcap_file_device(f)
-            else:
-                self.logger.warning("%s is not a regular file, skipping", f)
+        for file_name in os.listdir(self.pcap_dir):
+            file_path = os.path.join(self.pcap_dir, file_name)
+            if os.path.isfile(file_path):
+                self._create_pcap_file_device(file_path)
 
     def delete_device(self):
         self.logger.warning("Stop watching directory %s", self.pcap_dir)
