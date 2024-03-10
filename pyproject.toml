@@ -8,6 +8,7 @@ readme = "README.md"
 
 [tool.poetry.scripts]
 vis_spead_unpacker = 'ska_low_csp_testware.vis_spead_unpacker_device:main'
+dynamic_device = 'ska_low_csp_testware.dynamic_device:main'
 
 [[tool.poetry.source]]
 name = "default"

@@ -88,6 +88,30 @@ deviceServers:
       tag: "{{.Values.image.tag | default .Chart.AppVersion}}"
       pullPolicy: "{{.Values.image.pullPolicy}}"
 
+  dynamic:
+    name: "dynamic-{{.Release.Name}}"
+    function: testing
+    domain: ska-low-csp-testware
+    instances: ["1"]
+    command: dynamic_device
+    server:
+      name: dynamic_device
+      instances:
+        - name: "1"
+          classes:
+            - name: Parent
+              devices:
+                - name: test/parent/0
+            - name: Child
+              devices: []
+    depends_on:
+      - device: sys/database/2
+    image:
+      registry: "{{.Values.image.registry}}"
+      image: "{{.Values.image.image}}"
+      tag: "{{.Values.image.tag | default .Chart.AppVersion}}"
+      pullPolicy: "{{.Values.image.pullPolicy}}"
+
 nodeSelector: {}
 
 affinity: {}
