@@ -55,18 +55,38 @@ image:
 
 resources:
   requests:
-    cpu: 100m # 100m = 0.1 CPU
-    memory: 128Mi # 128Mi = 0.12 GB mem
-    ephemeral-storage: 256Mi
+    cpu: 2
+    memory: 8Gi
   limits:
-    cpu: 150m # 150m = 0.15 CPU
-    memory: 256Mi # 256Mi = 0.25 GB mem
-    ephemeral-storage: 512Mi
+    cpu: 4
+    memory: 16Gi
 
 deviceServers:
   vis-spead-unpacker:
+    name: "vis-spead-unpacker-{{.Release.Name}}"
+    function: vis-spead-unpacker
+    domain: ska-low-csp-testware
     instances: ["1"]
-    file: data/vis-spead-unpacker.yaml
+    command: "vis_spead_unpacker"
+    server:
+      name: "vis_spead_unpacker"
+      instances:
+        - name: "1"
+          classes:
+            - name: "VisSpeadUnpacker"
+              devices:
+                - name: "low-csp-test/vis-spead-unpacker/1"
+                  properties:
+                    - name: "pcap_dir"
+                      values:
+                        - "/pcap"
+    depends_on:
+      - device: sys/database/2
+    image:
+      registry: "{{.Values.image.registry}}"
+      image: "{{.Values.image.image}}"
+      tag: "{{.Values.image.tag | default .Chart.AppVersion}}"
+      pullPolicy: "{{.Values.image.pullPolicy}}"
 
 nodeSelector: {}
 
