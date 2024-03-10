@@ -3,16 +3,21 @@
 import logging
 import os
 
+import pandas
+import spead2
+import spead2.recv
 from tango import Util
-from tango.server import Device, device_property, run
+from tango.server import Device, attribute, command, device_property, run
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
+
+from ska_low_csp_testware.spead import SpeadHeapVisitor, process_pcap_file
 
 __all__ = ["PcapFileWatcher", "PcapFile", "main"]
 
 
 class PcapFileWatcher(Device, FileSystemEventHandler):
-    pcap_dir = device_property(dtype="DevString")
+    pcap_dir: str = device_property()  # type: ignore
 
     def init_device(self):
         super().init_device()
@@ -22,6 +27,9 @@ class PcapFileWatcher(Device, FileSystemEventHandler):
         self.observer.schedule(self, self.pcap_dir)
         self.observer.start()
         self.logger.warning("Watcher started")
+        for f in os.listdir(self.pcap_dir):
+            if os.path.isfile(f):
+                self._create_pcap_file_device(os.path.basename(f))
 
     def delete_device(self):
         self.logger.warning("Stop watching directory %s", self.pcap_dir)
@@ -30,41 +38,80 @@ class PcapFileWatcher(Device, FileSystemEventHandler):
         self.logger.warning("Watcher stopped")
         super().delete_device()
 
-    def on_created(self, event: FileSystemEvent) -> None:
-        self.logger.warning("Creating new device to represent %s", event.src_path)
+    def _create_pcap_file_device(self, file_name: str) -> None:
+        if not file_name.endswith(".pcap"):
+            return
+
+        dev_name = f"test/pcap-file/{file_name}"
+        file_path = os.path.join(self.pcap_dir, file_name)
+        self.logger.warning("Creating device %s", dev_name)
+        util = Util.instance()
+
+        def _fill_device_props():
+            db = util.get_database()
+            db.put_device_property(dev_name, {"pcap_file_path": [file_path]})
+
         try:
-            Util.instance().create_device(
-                "PcapFile",
-                f"test/pcap-file/{os.path.basename(event.src_path)}",
-                cb=self._fill_device_properties,
-            )
+            util.create_device("PcapFile", dev_name, cb=_fill_device_props)
         except Exception:
-            self.logger.error("Failed to create device", exc_info=True)
+            self.logger.error("Failed to create device %s", dev_name, exc_info=True)
+
+    def _remove_pcap_file_device(self, file_name: str) -> None:
+        dev_name = f"test/pcap-file/{file_name}"
+        self.logger.warning("Removing device %s", dev_name)
+        try:
+            Util.instance().delete_device("PcapFile", dev_name)
+        except Exception:
+            self.logger.error("Failed to remove device %s", dev_name, exc_info=True)
+
+    def on_created(self, event: FileSystemEvent) -> None:
+        self.logger.warning("File created: %s", event.src_path)
+        self._create_pcap_file_device(event.src_path)
 
     def on_deleted(self, event: FileSystemEvent) -> None:
-        self.logger.warning("Removing device representing %s", event.src_path)
-        try:
-            Util.instance().delete_device("PcapFile", f"test/pcap-file/{os.path.basename(event.src_path)}")
-        except Exception:
-            self.logger.error("Failed to delete device", exc_info=True)
+        self.logger.warning("File deleted: %s", event.src_path)
+        self._remove_pcap_file_device(event.src_path)
 
-    def _fill_device_properties(self, dev_name: str) -> None:
-        pcap_file_name = dev_name.removeprefix("test/pcap-file/")
-        pcap_file_path = os.path.join(self.pcap_dir, pcap_file_name)  # type: ignore
-        properties = {"pcap_file_path": [pcap_file_path]}
-        try:
-            Util.instance().get_database().put_device_property(dev_name, properties)
-        except Exception:
-            self.logger.error("Failed to fill device properties", exc_info=True)
+
+class ExtractVisibilityMetadata(SpeadHeapVisitor):
+    def __init__(self) -> None:
+        self._metadata = []
+
+    def visit_start_of_stream_heap(self, heap: spead2.recv.Heap, items: dict[str, spead2.Item]) -> None:
+        row = {}
+        for key, item in items.items():
+            row[key] = item.value
+        self._metadata.append(row)
+
+    @property
+    def metadata(self) -> pandas.DataFrame:
+        return pandas.DataFrame(self._metadata)
 
 
 class PcapFile(Device):
-    pcap_file_path = device_property(dtype="DevString")
+    pcap_file_path: str = device_property()  # type: ignore
+
+    _metadata: pandas.DataFrame | None = None
 
     def init_device(self):
         super().init_device()
         self.logger = logging.getLogger(self.get_name())
         self.logger.warning("I'm representing %s", self.pcap_file_path)
+
+    @attribute
+    def metadata(self) -> str:
+        if self._metadata is None:
+            return "{}"
+
+        return self._metadata.to_json()
+
+    @command
+    def load(self) -> None:
+        self.logger.warning("Start unpacking file")
+        visitor = ExtractVisibilityMetadata()
+        process_pcap_file(self.pcap_file_path, visitor)
+        self._metadata = visitor.metadata
+        self.logger.warning("Finished unpacking file")
 
 
 def main(args=None, **kwargs):
