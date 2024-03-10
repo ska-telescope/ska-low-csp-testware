@@ -2,20 +2,20 @@
 TANGO device to unpack visibility SPEAD data from a PCAP file.
 """
 
+import asyncio
+import concurrent.futures
 import hashlib
 import logging
 import os
 from functools import partial
 
-import asyncio
-import concurrent.futures
 import pandas
 import spead2
 import spead2.recv
-from tango import GreenMode, DevState
-from tango.server import Device, device_property, command, attribute, run
+from tango import DevState, GreenMode
+from tango.server import Device, attribute, command, device_property, run
 
-from ska_low_csp_testware.spead import process_pcap_file, SpeadHeapVisitor
+from ska_low_csp_testware.spead import SpeadHeapVisitor, process_pcap_file
 
 __all__ = ["VisSpeadUnpacker", "main"]
 
@@ -38,6 +38,7 @@ class ExtractVisibilityMetadata(SpeadHeapVisitor):
 
     @property
     def metadata(self) -> pandas.DataFrame:
+        """The visibility SPEAD headers in a ``DataFrame`` format."""
         return pandas.DataFrame(self._metadata)
 
 
@@ -52,18 +53,19 @@ class VisSpeadUnpacker(Device):
 
     _metadata: dict[str, pandas.DataFrame] = {}
 
-    async def init_device(self):
+    async def init_device(self):  # pylint: disable=invalid-overridden-method
         await super().init_device()
         self._metadata = {}
         self.set_state(DevState.ON)
 
     def metadata_read(self, attr):
+        """Generic read method for the ``_metadata`` dynamic TANGO attributes."""
         attr_name = attr.get_name().removesuffix("_metadata")
         value = self._metadata[attr_name]
         attr.set_value(value.to_json())
 
     @command
-    async def Unpack(self, file_name: str) -> str:
+    async def Unpack(self, file_name: str) -> str:  # pylint: disable=invalid-name
         """Unpack a PCAP file."""
         file_hash = hashlib.sha1(file_name.encode()).hexdigest()
         if file_hash in self._metadata:
