@@ -1,4 +1,4 @@
-# pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring
+# pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,broad-exception-caught
 
 import logging
 import os
@@ -32,21 +32,30 @@ class PcapFileWatcher(Device, FileSystemEventHandler):
 
     def on_created(self, event: FileSystemEvent) -> None:
         self.logger.warning("Creating new device to represent %s", event.src_path)
-        Util.instance().create_device(
-            "PcapFile",
-            f"test/pcap-file/{os.path.basename(event.src_path)}",
-            cb=self._fill_device_properties,
-        )
+        try:
+            Util.instance().create_device(
+                "PcapFile",
+                f"test/pcap-file/{os.path.basename(event.src_path)}",
+                cb=self._fill_device_properties,
+            )
+        except Exception:
+            self.logger.error("Failed to create device", exc_info=True)
 
     def on_deleted(self, event: FileSystemEvent) -> None:
         self.logger.warning("Removing device representing %s", event.src_path)
-        Util.instance().delete_device("PcapFile", f"test/pcap-file/{os.path.basename(event.src_path)}")
+        try:
+            Util.instance().delete_device("PcapFile", f"test/pcap-file/{os.path.basename(event.src_path)}")
+        except Exception:
+            self.logger.error("Failed to delete device", exc_info=True)
 
     def _fill_device_properties(self, dev_name: str) -> None:
         pcap_file_name = dev_name.removeprefix("test/pcap-file/")
         pcap_file_path = os.path.join(self.pcap_dir, pcap_file_name)  # type: ignore
-        properties = {"pcap_file_path": pcap_file_path}
-        Util.get_database().put_device_property(dev_name, properties)
+        properties = {"pcap_file_path": [pcap_file_path]}
+        try:
+            Util.get_database().put_device_property(dev_name, properties)
+        except Exception:
+            self.logger.error("Failed to fill device properties", exc_info=True)
 
 
 class PcapFile(Device):
