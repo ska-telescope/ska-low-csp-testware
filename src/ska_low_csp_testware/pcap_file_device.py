@@ -1,5 +1,6 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,broad-exception-caught
 
+import functools
 import logging
 import os
 
@@ -43,18 +44,20 @@ class PcapFileWatcher(Device, FileSystemEventHandler):
             return
 
         dev_name = f"test/pcap-file/{file_name}"
-        file_path = os.path.join(self.pcap_dir, file_name)
         self.logger.warning("Creating device %s", dev_name)
-        util = Util.instance()
-
-        def _fill_device_props():
-            db = util.get_database()
-            db.put_device_property(dev_name, {"pcap_file_path": [file_path]})
 
         try:
-            util.create_device("PcapFile", dev_name, cb=_fill_device_props)
+            Util.instance().create_device(
+                "PcapFile",
+                dev_name,
+                cb=functools.partial(self._create_pcap_file_device_properties, file_name),
+            )
         except Exception:
             self.logger.error("Failed to create device %s", dev_name, exc_info=True)
+
+    def _create_pcap_file_device_properties(self, file_name: str, dev_name: str) -> None:
+        db = Util.instance().get_database()
+        db.put_device_property(dev_name, {"pcap_file_path": [os.path.join(self.pcap_dir, file_name)]})
 
     def _remove_pcap_file_device(self, file_name: str) -> None:
         dev_name = f"test/pcap-file/{file_name}"
