@@ -1,0 +1,40 @@
+global:
+  labels:
+    app: ska-low-csp-testware
+  annotations:
+    app.gitlab.com/app: ska-low-csp-testware
+    app.gitlab.com/env: ska-low-csp-testware
+  minikube: true
+  exposeAllDS: true
+  operator: true
+  tango_host: ska-low-csp-databaseds:10000
+  sub-system:
+    ska-tango-base:
+      enabled: false
+    taranta:
+      enabled: false
+
+ska-tango-base:
+  deviceServers:
+    tangotest:
+      instances: []
+  itango:
+    enabled: true
+
+ska-low-csp-testware:
+  deviceServers:
+    vis-spead-unpacker:
+      # nodeSelector:
+      #   kubernetes.io/hostname: clp-k8s-fpga-worker-1
+      extraVolumes:
+        - name: pcap-files
+          hostPath:
+            path: /data/pcap
+            type: Directory
+      extraVolumeMounts:
+        - mountPath: /pcap-files
+          name: pcap-files
+          readOnly: true
+  # tolerations:
+  #   - key: node-role.skatelescope.org/fpga-worker
+  #     value: "true"
