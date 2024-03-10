@@ -1,52 +1,38 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,broad-exception-caught
 
 import functools
-import logging
 import os
 
 import pandas
 import spead2
 import spead2.recv
+from ska_tango_base.base import SKABaseDevice
 from tango import Util
-from tango.server import Device, attribute, command, device_property, run
-from watchdog.events import FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
+from tango.server import attribute, command, device_property, run
 
+from ska_low_csp_testware.pcap_file_component_manager import PcapFileComponentManager, PcapFileWatcherComponentManager
 from ska_low_csp_testware.spead import SpeadHeapVisitor, process_pcap_file
 
 __all__ = ["PcapFileWatcher", "PcapFile", "main"]
 
 
-class PcapFileWatcher(Device, FileSystemEventHandler):
+class PcapFileWatcher(SKABaseDevice):
     pcap_dir: str = device_property()  # type: ignore
 
-    def init_device(self):
-        super().init_device()
-        self.logger = logging.getLogger(self.get_name())
-        self.observer = Observer()
-        self.logger.warning("Start watching directory %s", self.pcap_dir)
-        self.observer.schedule(self, self.pcap_dir)
-        self.observer.start()
-        self.logger.warning("Watcher started")
-        for file_name in os.listdir(self.pcap_dir):
-            file_path = os.path.join(self.pcap_dir, file_name)
-            if os.path.isfile(file_path):
-                self._create_pcap_file_device(file_path)
+    def create_component_manager(self) -> PcapFileWatcherComponentManager:
+        return PcapFileWatcherComponentManager(
+            pcap_dir=self.pcap_dir,
+            logger=self.logger,
+            communication_state_callback=self._communication_state_changed,
+            component_state_callback=self._component_state_changed,
+            pcap_file_created_callback=self._pcap_file_created,
+            pcap_file_deleted_callback=self._pcap_file_deleted,
+        )
 
-    def delete_device(self):
-        self.logger.warning("Stop watching directory %s", self.pcap_dir)
-        self.observer.stop()
-        self.observer.join()
-        self.logger.warning("Watcher stopped")
-        super().delete_device()
-
-    def _create_pcap_file_device(self, file_path: str) -> None:
-        if not file_path.endswith(".pcap"):
-            return
-
+    def _pcap_file_created(self, file_path: str) -> None:
         file_name = os.path.basename(file_path)
         dev_name = f"test/pcap-file/{file_name}"
-        self.logger.warning("Creating device %s", dev_name)
+        self.logger.info("Creating device %s", dev_name)
 
         try:
             Util.instance().create_device(
@@ -57,26 +43,18 @@ class PcapFileWatcher(Device, FileSystemEventHandler):
         except Exception:
             self.logger.error("Failed to create device %s", dev_name, exc_info=True)
 
-    def _create_pcap_file_device_properties(self, file_path: str, dev_name: str) -> None:
-        db = Util.instance().get_database()
-        db.put_device_property(dev_name, {"pcap_file_path": [file_path]})
-
-    def _remove_pcap_file_device(self, file_path: str) -> None:
+    def _pcap_file_deleted(self, file_path: str) -> None:
         file_name = os.path.basename(file_path)
         dev_name = f"test/pcap-file/{file_name}"
-        self.logger.warning("Removing device %s", dev_name)
+        self.logger.info("Removing device %s", dev_name)
         try:
             Util.instance().delete_device("PcapFile", dev_name)
         except Exception:
             self.logger.error("Failed to remove device %s", dev_name, exc_info=True)
 
-    def on_created(self, event: FileSystemEvent) -> None:
-        self.logger.warning("File created: %s", event.src_path)
-        self._create_pcap_file_device(event.src_path)
-
-    def on_deleted(self, event: FileSystemEvent) -> None:
-        self.logger.warning("File deleted: %s", event.src_path)
-        self._remove_pcap_file_device(event.src_path)
+    def _create_pcap_file_device_properties(self, file_path: str, dev_name: str) -> None:
+        db = Util.instance().get_database()
+        db.put_device_property(dev_name, {"pcap_file_path": [file_path]})
 
 
 class ExtractVisibilityMetadata(SpeadHeapVisitor):
@@ -94,30 +72,33 @@ class ExtractVisibilityMetadata(SpeadHeapVisitor):
         return pandas.DataFrame(self._metadata)
 
 
-class PcapFile(Device):
+class PcapFile(SKABaseDevice):
     pcap_file_path: str = device_property()  # type: ignore
 
     _metadata: pandas.DataFrame | None = None
 
-    def init_device(self):
-        super().init_device()
-        self.logger = logging.getLogger(self.get_name())
-        self.logger.warning("I'm representing %s", self.pcap_file_path)
+    def create_component_manager(self) -> PcapFileComponentManager:
+        return PcapFileComponentManager(
+            pcap_file_path=self.pcap_file_path,
+            logger=self.logger,
+            communication_state_callback=self._communication_state_changed,
+            component_state_callback=self._component_state_changed,
+        )
 
     @attribute
     def metadata(self) -> str:
         if self._metadata is None:
-            return "{}"
+            return "\\{\\}"
 
         return self._metadata.to_json()
 
     @command
     def load(self) -> None:
-        self.logger.warning("Start unpacking file")
+        self.logger.debug("Start unpacking file")
         visitor = ExtractVisibilityMetadata()
         process_pcap_file(self.pcap_file_path, visitor)
         self._metadata = visitor.metadata
-        self.logger.warning("Finished unpacking file")
+        self.logger.debug("Finished unpacking file")
 
 
 def main(args=None, **kwargs):
