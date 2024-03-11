@@ -33,7 +33,7 @@ class PcapFileWatcher(SKABaseDevice):
             files=self._files,
         )
 
-    @attribute
+    @attribute(max_dim_x=9999)
     def files(self) -> list[str]:
         return self._files
 
@@ -65,12 +65,19 @@ class PcapFileWatcher(SKABaseDevice):
         self.push_archive_event("files", files)
 
     def _create_pcap_file_device(self, file_path: str) -> None:
+        util = Util.instance()
+        db = util.get_database()
         file_name = os.path.basename(file_path)
         dev_name = f"test/pcap-file/{file_name}"
+
+        if dev_name in db.get_device_name(util.get_ds_name(), "PcapFile").value_string:
+            self.logger.info("Device %s already exists, skipping device creation", dev_name)
+            return
+
         self.logger.info("Creating device %s", dev_name)
 
         try:
-            Util.instance().create_device(
+            util.create_device(
                 "PcapFile",
                 dev_name,
                 cb=functools.partial(self._create_pcap_file_device_properties, file_path),
@@ -83,8 +90,15 @@ class PcapFileWatcher(SKABaseDevice):
         db.put_device_property(dev_name, {"pcap_file_path": [file_path]})
 
     def _delete_pcap_file_device(self, file_path: str) -> None:
+        util = Util.instance()
+        db = util.get_database()
         file_name = os.path.basename(file_path)
         dev_name = f"test/pcap-file/{file_name}"
+
+        if dev_name not in db.get_device_name(util.get_ds_name(), "PcapFile").value_string:
+            self.logger.info("Device %s does not exist, no need to remove", dev_name)
+            return
+
         self.logger.info("Removing device %s", dev_name)
         try:
             Util.instance().delete_device("PcapFile", dev_name)
