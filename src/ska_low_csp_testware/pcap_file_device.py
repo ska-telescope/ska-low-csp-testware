@@ -49,10 +49,11 @@ class PcapFileDevice(SKABaseDevice):
 
         return self._metadata.to_json()
 
-    @command
-    def Load(self) -> tuple[ResultCode, str]:  # pylint: disable=invalid-name
+    @command(dtype_out="DevVarLongStringArray")
+    def Load(self) -> tuple[list[ResultCode], list[str]]:  # pylint: disable=invalid-name
         handler = self.get_command_object("Load")
-        return handler()
+        result, message = handler()
+        return [result], [message]
 
     def _update_metadata(self, metadata: pandas.DataFrame) -> None:
         self._metadata = metadata
