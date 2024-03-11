@@ -11,7 +11,7 @@ from ska_control_model import CommunicationStatus, PowerState, TaskStatus
 from ska_tango_base.base import CommunicationStatusCallbackType, TaskCallbackType, check_communicating
 from ska_tango_base.executor import TaskExecutorComponentManager
 
-from ska_low_csp_testware.spead import SpeadHeapVisitor, process_pcap_file
+from ska_low_csp_testware.spead import SpeadHeapVisitor, read_pcap_file
 
 __all__ = ["PcapFileComponentManager"]
 
@@ -91,7 +91,17 @@ class PcapFileComponentManager(TaskExecutorComponentManager):
         task_callback(status=TaskStatus.IN_PROGRESS)
         visitor = _ExtractVisibilityMetadata()
         try:
-            process_pcap_file(self._pcap_file_path, visitor)
+            read_pcap_file(
+                pcap_file_path=self._pcap_file_path,
+                visitors=[visitor],
+                logger=self.logger,
+                task_abort_event=task_abort_event,
+            )
+
+            if task_abort_event.is_set():
+                task_callback(status=TaskStatus.ABORTED)
+                return
+
             self._update_component_state(metadata=visitor.metadata, fault=False)
             task_callback(status=TaskStatus.COMPLETED)
         except Exception as e:

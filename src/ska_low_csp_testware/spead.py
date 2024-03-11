@@ -3,11 +3,13 @@ Module to read SPEAD data using the ``spead2`` library.
 """
 
 import abc
+import logging
+import threading
 
 import spead2
 import spead2.recv
 
-__all__ = ["process_pcap_file", "SpeadHeapVisitor"]
+__all__ = ["read_pcap_file", "SpeadHeapVisitor"]
 
 
 class SpeadHeapVisitor(abc.ABC):
@@ -38,14 +40,34 @@ class SpeadHeapVisitor(abc.ABC):
         """
 
 
-def process_pcap_file(pcap_file_path: str, *visitors: SpeadHeapVisitor) -> None:
-    """Process a PCAP file containing SPEAD data."""
+def read_pcap_file(
+    pcap_file_path: str,
+    visitors: list[SpeadHeapVisitor],
+    logger: logging.Logger,
+    task_abort_event: threading.Event | None = None,
+) -> None:
+    """Read a PCAP file containing SPEAD data."""
+    logger.info("Start reading SPEAD data from file: %s", pcap_file_path)
     stream = spead2.recv.Stream(spead2.ThreadPool())
     stream.add_udp_pcap_file_reader(pcap_file_path, filter="")
     item_group = spead2.ItemGroup()
+    heap_number = 0
 
-    for heap in stream:
+    for heap_number, heap in enumerate(stream):
+        if task_abort_event is not None and task_abort_event.is_set():
+            logger.info("Abort reading SPEAD data from file: %s", pcap_file_path)
+            stream.stop()
+            return
+
         items = item_group.update(heap)
+
+        if heap_number == 0:
+            logger.info(
+                "SPEAD flavour: SPEAD-%d-%d v%s",
+                heap.flavour.item_pointer_bits,
+                heap.flavour.heap_address_bits,
+                heap.flavour.version,
+            )
 
         if heap.is_start_of_stream():
             for visitor in visitors:
@@ -61,3 +83,4 @@ def process_pcap_file(pcap_file_path: str, *visitors: SpeadHeapVisitor) -> None:
             visitor.visit_data_heap(heap, items)
 
     stream.stop()
+    logger.info("Finished reading SPEAD data from file: %s", pcap_file_path)
