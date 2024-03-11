@@ -26,6 +26,7 @@ pandas = "^2.2.1"
 ska-control-model = "^0.3.4"
 watchdog = "^4.0.0"
 ska-tango-base = "^0.20.1"
+typing-extensions = "^4.10.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.1.1"
