@@ -105,5 +105,6 @@ class PcapFileComponentManager(TaskExecutorComponentManager):
             self._update_component_state(metadata=visitor.metadata, fault=False)
             task_callback(status=TaskStatus.COMPLETED)
         except Exception as e:
+            self.logger.error("Failed to load file %s", self._pcap_file_path, exc_info=True)
             self._update_component_state(fault=True)
             task_callback(status=TaskStatus.FAILED, exception=e)
