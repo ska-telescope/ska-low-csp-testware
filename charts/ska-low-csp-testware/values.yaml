@@ -67,20 +67,20 @@ deviceServers:
     function: testing
     domain: ska-low-csp-testware
     instances: ["1"]
-    command: "pcap_file_device"
+    command: "pcap_file_device_server"
     server:
-      name: "pcap_file_device"
+      name: "pcap_file_device_server"
       instances:
         - name: "1"
           classes:
-            - name: PcapFileWatcher
+            - name: PcapFileWatcherDevice
               devices:
                 - name: "test/pcap-file-watcher/0"
                   properties:
                     - name: "pcap_dir"
                       values:
                         - "/pcap"
-            - name: PcapFile
+            - name: PcapFileDevice
               devices: []
     depends_on:
       - device: sys/database/2
