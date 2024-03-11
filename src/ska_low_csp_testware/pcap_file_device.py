@@ -57,8 +57,9 @@ class PcapFileDevice(SKABaseDevice):
 
     def _update_metadata(self, metadata: pandas.DataFrame) -> None:
         self._metadata = metadata
-        self.push_change_event("metadata", metadata)
-        self.push_archive_event("metadata", metadata)
+        metadata_json = metadata.to_json()
+        self.push_change_event("metadata", metadata_json)
+        self.push_archive_event("metadata", metadata_json)
 
     def _component_state_changed(
         self,

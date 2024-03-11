@@ -83,4 +83,4 @@ def read_pcap_file(
             visitor.visit_data_heap(heap, items)
 
     stream.stop()
-    logger.info("Finished reading SPEAD data from file: %s", pcap_file_path)
+    logger.info("Finished reading %d SPEAD heaps from file: %s", heap_number + 1, pcap_file_path)
