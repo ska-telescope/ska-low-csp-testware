@@ -1,8 +1,11 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,broad-exception-caught
 
+from logging import Logger
+from typing import Any
+
 from ska_control_model import PowerState, ResultCode
 from ska_tango_base.base import SKABaseDevice
-from ska_tango_base.commands import SubmittedSlowCommand
+from ska_tango_base.commands import FastCommand, SubmittedSlowCommand
 from tango.server import attribute, command, device_property
 
 from ska_low_csp_testware.pcap_file_component_manager import PcapFileComponentManager
@@ -27,8 +30,28 @@ class PcapFileDevice(SKABaseDevice):
             metadata=self._metadata,
         )
 
+    class DeleteCommand(FastCommand[None]):
+        def __init__(
+            self,
+            component_manager: PcapFileComponentManager,
+            logger: Logger | None = None,
+        ) -> None:
+            self._component_manager = component_manager
+            super().__init__(logger)
+
+        def do(self, *args: Any, **kwargs: Any) -> None:
+            self._component_manager.delete()
+
     def init_command_objects(self) -> None:
         super().init_command_objects()
+
+        self.register_command_object(
+            "Delete",
+            self.DeleteCommand(
+                self.component_manager,
+                self.logger,
+            ),
+        )
 
         self.register_command_object(
             "Load",
@@ -55,6 +78,11 @@ class PcapFileDevice(SKABaseDevice):
             return self._metadata.spead_headers.to_json()
 
         return "{}"
+
+    @command
+    def Delete(self) -> None:  # pylint: disable=invalid-name
+        handler = self.get_command_object("Delete")
+        handler()
 
     @command(dtype_out="DevVarLongStringArray")
     def Load(self) -> tuple[list[ResultCode], list[str]]:  # pylint: disable=invalid-name

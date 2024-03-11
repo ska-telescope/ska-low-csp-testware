@@ -24,7 +24,7 @@ ska-tango-base:
 ska-low-csp-testware:
   image:
     registry: registry.gitlab.com/ska-telescope/ska-low-csp-testware
-    tag: 0.0.1-dev.cc669a87e
+    tag: 0.0.1-dev.cd7f88ace
   deviceServers:
     pcap-helper:
       nodeSelector:
@@ -37,7 +37,6 @@ ska-low-csp-testware:
       extraVolumeMounts:
         - mountPath: /pcap
           name: pcap-files
-          readOnly: true
   tolerations:
     - key: node-role.skatelescope.org/fpga-worker
       value: "true"

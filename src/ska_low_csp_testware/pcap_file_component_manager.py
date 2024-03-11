@@ -1,6 +1,7 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,broad-exception-caught
 
 import logging
+import os
 import threading
 from typing import Any, Callable
 
@@ -8,7 +9,7 @@ import pandas
 import spead2
 import spead2.recv
 from ska_control_model import CommunicationStatus, PowerState, TaskStatus
-from ska_tango_base.base import CommunicationStatusCallbackType, TaskCallbackType, check_communicating
+from ska_tango_base.base import CommunicationStatusCallbackType, TaskCallbackType
 from ska_tango_base.executor import TaskExecutorComponentManager
 
 from ska_low_csp_testware.pcap_file_metadata import PcapFileMetadata
@@ -91,7 +92,15 @@ class PcapFileComponentManager(TaskExecutorComponentManager):
     def reset(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
         return TaskStatus.REJECTED, "Command not supported"
 
-    @check_communicating
+    def delete(self) -> None:
+        file_path = self._pcap_file_path
+        self.logger.info("Deleting file %s", file_path)
+        try:
+            os.remove(file_path)
+        except Exception:
+            self.logger.error("Failed to delete file %s", file_path, exc_info=True)
+            raise
+
     def load(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
         return self.submit_task(self._load, task_callback=task_callback)
 
