@@ -90,18 +90,6 @@ class PcapFileDevice(SKABaseDevice):
         result, message = handler()
         return [result], [message]
 
-    def is_Off_allowed(self) -> bool:
-        return False
-
-    def is_On_allowed(self) -> bool:
-        return False
-
-    def is_Reset_allowed(self) -> bool:
-        return False
-
-    def is_Standby_allowed(self) -> bool:
-        return False
-
     def _update_metadata(self, metadata: PcapFileMetadata) -> None:
         self._metadata = metadata
 
