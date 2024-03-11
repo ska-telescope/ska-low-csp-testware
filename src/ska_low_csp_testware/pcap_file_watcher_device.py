@@ -7,7 +7,7 @@ import os
 from ska_control_model import PowerState
 from ska_tango_base.base import SKABaseDevice
 from tango import DevFailed, Util
-from tango.server import attribute, device_property, command
+from tango.server import attribute, command, device_property
 
 from ska_low_csp_testware.pcap_file_watcher_component_manager import PcapFileWatcherComponentManager
 

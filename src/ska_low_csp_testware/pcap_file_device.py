@@ -15,7 +15,7 @@ class PcapFileDevice(SKABaseDevice):
     pcap_file_path: str = device_property()  # type: ignore
 
     def __init__(self, *args, **kwargs):
-        self._metadata: pandas.DataFrame | None = None
+        self._metadata = pandas.DataFrame()
         super().__init__(*args, **kwargs)
 
     def create_component_manager(self) -> PcapFileComponentManager:
@@ -44,9 +44,6 @@ class PcapFileDevice(SKABaseDevice):
 
     @attribute
     def metadata(self) -> str:
-        if self._metadata is None:
-            return "{}"
-
         return self._metadata.to_json()
 
     @command(dtype_out="DevVarLongStringArray")
