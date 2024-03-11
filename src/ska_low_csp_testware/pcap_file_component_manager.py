@@ -40,8 +40,15 @@ class PcapFileComponentManager(TaskExecutorComponentManager):
         component_state_callback: Callable[..., None] | None = None,
         **state: Any
     ) -> None:
-        super().__init__(logger, communication_state_callback, component_state_callback, **state)
         self._pcap_file_path = pcap_file_path
+        super().__init__(
+            logger,
+            communication_state_callback,
+            component_state_callback,
+            power=PowerState.UNKNOWN,
+            fault=None,
+            **state,
+        )
 
     def start_communicating(self) -> None:
         if self.communication_state == CommunicationStatus.ESTABLISHED:
