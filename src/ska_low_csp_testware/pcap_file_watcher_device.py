@@ -1,12 +1,13 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,broad-exception-caught
 
 import functools
+import hashlib
 import os
 
 from ska_control_model import PowerState
 from ska_tango_base.base import SKABaseDevice
 from tango import DevFailed, Util
-from tango.server import attribute, device_property
+from tango.server import attribute, device_property, command
 
 from ska_low_csp_testware.pcap_file_watcher_component_manager import PcapFileWatcherComponentManager
 
@@ -32,6 +33,13 @@ class PcapFileWatcherDevice(SKABaseDevice):
     @attribute(max_dim_x=9999)
     def files(self) -> list[str]:
         return self._files
+
+    @command
+    def GetPcapFileDeviceName(self, file_name: str) -> str:  # pylint: disable=invalid-name
+        if file_name not in self._files:
+            raise RuntimeError("The specified file name does not exist")
+
+        return self._get_dev_name(file_name)
 
     def is_Off_allowed(self) -> bool:
         return False
@@ -72,9 +80,8 @@ class PcapFileWatcherDevice(SKABaseDevice):
         self.push_change_event("files", files)
         self.push_archive_event("files", files)
 
-    def _create_pcap_file_device(self, file_path: str) -> None:
-        file_name = os.path.basename(file_path)
-        dev_name = f"test/pcap-file/{file_name}"
+    def _create_pcap_file_device(self, file_name: str) -> None:
+        dev_name = self._get_dev_name(file_name)
 
         if self._is_device_defined(dev_name):
             self.logger.info("Device %s already exists, skipping device creation", dev_name)
@@ -86,18 +93,17 @@ class PcapFileWatcherDevice(SKABaseDevice):
             Util.instance().create_device(
                 "PcapFileDevice",
                 dev_name,
-                cb=functools.partial(self._create_pcap_file_device_properties, file_path),
+                cb=functools.partial(self._create_pcap_file_device_properties, file_name),
             )
         except Exception:
             self.logger.error("Failed to create device %s", dev_name, exc_info=True)
 
-    def _create_pcap_file_device_properties(self, file_path: str, dev_name: str) -> None:
+    def _create_pcap_file_device_properties(self, file_name: str, dev_name: str) -> None:
         db = Util.instance().get_database()
-        db.put_device_property(dev_name, {"pcap_file_path": [file_path]})
+        db.put_device_property(dev_name, {"pcap_file_path": [os.path.join(self.pcap_dir, file_name)]})
 
-    def _delete_pcap_file_device(self, file_path: str) -> None:
-        file_name = os.path.basename(file_path)
-        dev_name = f"test/pcap-file/{file_name}"
+    def _delete_pcap_file_device(self, file_name: str) -> None:
+        dev_name = self._get_dev_name(file_name)
 
         if not self._is_device_defined(dev_name):
             self.logger.info("Device %s does not exist, no need to remove", dev_name)
@@ -116,3 +122,7 @@ class PcapFileWatcherDevice(SKABaseDevice):
             return True
         except DevFailed:
             return False
+
+    def _get_dev_name(self, file_name: str) -> str:
+        file_key = hashlib.sha1(file_name.encode()).hexdigest()[:8]
+        return f"test/pcap-file/{file_key}"

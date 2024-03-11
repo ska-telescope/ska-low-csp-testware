@@ -47,7 +47,7 @@ class PcapFileWatcherComponentManager(PollingComponentManager[str, list[str]]):
         for file_name in os.listdir(poll_request):
             file_path = os.path.join(poll_request, file_name)
             if os.path.isfile(file_path) and file_path.endswith(".pcap"):
-                files.append(file_path)
+                files.append(file_name)
 
         return files
 
