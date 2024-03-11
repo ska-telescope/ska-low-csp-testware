@@ -8,7 +8,7 @@ import spead2
 import spead2.recv
 from ska_control_model import PowerState
 from ska_tango_base.base import SKABaseDevice
-from tango import Util
+from tango import DevFailed, Util
 from tango.server import attribute, command, device_property, run
 
 from ska_low_csp_testware.pcap_file_component_manager import PcapFileComponentManager, PcapFileWatcherComponentManager
@@ -65,19 +65,17 @@ class PcapFileWatcher(SKABaseDevice):
         self.push_archive_event("files", files)
 
     def _create_pcap_file_device(self, file_path: str) -> None:
-        util = Util.instance()
-        db = util.get_database()
         file_name = os.path.basename(file_path)
         dev_name = f"test/pcap-file/{file_name}"
 
-        if dev_name in db.get_device_name(util.get_ds_name(), "PcapFile").value_string:
+        if self._is_device_defined(dev_name):
             self.logger.info("Device %s already exists, skipping device creation", dev_name)
             return
 
         self.logger.info("Creating device %s", dev_name)
 
         try:
-            util.create_device(
+            Util.instance().create_device(
                 "PcapFile",
                 dev_name,
                 cb=functools.partial(self._create_pcap_file_device_properties, file_path),
@@ -90,12 +88,10 @@ class PcapFileWatcher(SKABaseDevice):
         db.put_device_property(dev_name, {"pcap_file_path": [file_path]})
 
     def _delete_pcap_file_device(self, file_path: str) -> None:
-        util = Util.instance()
-        db = util.get_database()
         file_name = os.path.basename(file_path)
         dev_name = f"test/pcap-file/{file_name}"
 
-        if dev_name not in db.get_device_name(util.get_ds_name(), "PcapFile").value_string:
+        if not self._is_device_defined(dev_name):
             self.logger.info("Device %s does not exist, no need to remove", dev_name)
             return
 
@@ -104,6 +100,14 @@ class PcapFileWatcher(SKABaseDevice):
             Util.instance().delete_device("PcapFile", dev_name)
         except Exception:
             self.logger.error("Failed to remove device %s", dev_name, exc_info=True)
+
+    def _is_device_defined(self, dev_name: str) -> bool:
+        db = Util.instance().get_database()
+        try:
+            db.get_device_info(dev_name)
+            return True
+        except DevFailed:
+            return False
 
 
 class ExtractVisibilityMetadata(SpeadHeapVisitor):
