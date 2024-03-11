@@ -1,17 +1,18 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,broad-exception-caught
 
 import functools
-import hashlib
 import os
 
 from ska_control_model import PowerState
 from ska_tango_base.base import SKABaseDevice
-from tango import DevFailed, Util
-from tango.server import attribute, command, device_property
+from tango import Util
+from tango.server import attribute, device_property
 
 from ska_low_csp_testware.pcap_file_watcher_component_manager import PcapFileWatcherComponentManager
 
 __all__ = ["PcapFileWatcherDevice"]
+
+PCAP_FILE_DEVICE_CLASS = "PcapFileDevice"
 
 
 class PcapFileWatcherDevice(SKABaseDevice):
@@ -33,13 +34,6 @@ class PcapFileWatcherDevice(SKABaseDevice):
     @attribute(max_dim_x=9999)
     def files(self) -> list[str]:
         return self._files
-
-    @command
-    def GetPcapFileDeviceName(self, file_name: str) -> str:  # pylint: disable=invalid-name
-        if file_name not in self._files:
-            raise RuntimeError("The specified file name does not exist")
-
-        return self._get_dev_name(file_name)
 
     def is_Off_allowed(self) -> bool:
         return False
@@ -91,7 +85,7 @@ class PcapFileWatcherDevice(SKABaseDevice):
 
         try:
             Util.instance().create_device(
-                "PcapFileDevice",
+                PCAP_FILE_DEVICE_CLASS,
                 dev_name,
                 cb=functools.partial(self._create_pcap_file_device_properties, file_name),
             )
@@ -111,18 +105,16 @@ class PcapFileWatcherDevice(SKABaseDevice):
 
         self.logger.info("Removing device %s", dev_name)
         try:
-            Util.instance().delete_device("PcapFileDevice", dev_name)
+            Util.instance().delete_device(PCAP_FILE_DEVICE_CLASS, dev_name)
         except Exception:
             self.logger.error("Failed to remove device %s", dev_name, exc_info=True)
 
     def _is_device_defined(self, dev_name: str) -> bool:
-        db = Util.instance().get_database()
-        try:
-            db.get_device_info(dev_name)
-            return True
-        except DevFailed:
-            return False
+        util = Util.instance()
+        db = util.get_database()
+
+        devices = db.get_device_name(util.get_ds_name(), PCAP_FILE_DEVICE_CLASS)
+        return dev_name in devices.value_string
 
     def _get_dev_name(self, file_name: str) -> str:
-        file_key = hashlib.sha1(file_name.encode()).hexdigest()[:8]
-        return f"test/pcap-file/{file_key}"
+        return f"test/pcap-file/{file_name.lower()}"
