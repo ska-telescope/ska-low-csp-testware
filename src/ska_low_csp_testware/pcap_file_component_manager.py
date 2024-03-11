@@ -11,24 +11,36 @@ from ska_control_model import CommunicationStatus, PowerState, TaskStatus
 from ska_tango_base.base import CommunicationStatusCallbackType, TaskCallbackType, check_communicating
 from ska_tango_base.executor import TaskExecutorComponentManager
 
+from ska_low_csp_testware.pcap_file_metadata import PcapFileMetadata
 from ska_low_csp_testware.spead import SpeadHeapVisitor, read_pcap_file
 
 __all__ = ["PcapFileComponentManager"]
 
 
-class _ExtractVisibilityMetadata(SpeadHeapVisitor):
+class _ExtractMetadata(SpeadHeapVisitor):
     def __init__(self) -> None:
-        self._metadata = []
+        self._headers = []
+        self._heap_count = 0
 
     def visit_start_of_stream_heap(self, heap: spead2.recv.Heap, items: dict[str, spead2.Item]) -> None:
         row = {}
         for key, item in items.items():
             row[key] = item.value
-        self._metadata.append(row)
+        self._headers.append(row)
+        self._heap_count += 1
+
+    def visit_data_heap(self, heap: spead2.recv.Heap, items: dict[str, spead2.Item]) -> None:
+        self._heap_count += 1
+
+    def visit_end_of_stream_heap(self, heap: spead2.recv.Heap, items: dict[str, spead2.Item]) -> None:
+        self._heap_count += 1
 
     @property
-    def metadata(self) -> pandas.DataFrame:
-        return pandas.DataFrame(self._metadata)
+    def metadata(self) -> PcapFileMetadata:
+        return PcapFileMetadata(
+            heap_count=self._heap_count,
+            spead_headers=pandas.DataFrame(self._headers),
+        )
 
 
 class PcapFileComponentManager(TaskExecutorComponentManager):
@@ -83,13 +95,13 @@ class PcapFileComponentManager(TaskExecutorComponentManager):
     def load(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
         return self.submit_task(self._load, task_callback=task_callback)
 
-    def _load(  # pylint: disable=unused-argument
+    def _load(
         self,
         task_callback: TaskCallbackType,
         task_abort_event: threading.Event,
     ) -> None:
         task_callback(status=TaskStatus.IN_PROGRESS)
-        visitor = _ExtractVisibilityMetadata()
+        visitor = _ExtractMetadata()
         try:
             read_pcap_file(
                 pcap_file_path=self._pcap_file_path,

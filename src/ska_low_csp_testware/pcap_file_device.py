@@ -1,12 +1,12 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,broad-exception-caught
 
-import pandas
 from ska_control_model import PowerState, ResultCode
 from ska_tango_base.base import SKABaseDevice
 from ska_tango_base.commands import SubmittedSlowCommand
 from tango.server import attribute, command, device_property
 
 from ska_low_csp_testware.pcap_file_component_manager import PcapFileComponentManager
+from ska_low_csp_testware.pcap_file_metadata import PcapFileMetadata
 
 __all__ = ["PcapFileDevice"]
 
@@ -15,7 +15,7 @@ class PcapFileDevice(SKABaseDevice):
     pcap_file_path: str = device_property()  # type: ignore
 
     def __init__(self, *args, **kwargs):
-        self._metadata = pandas.DataFrame()
+        self._metadata: PcapFileMetadata | None = None
         super().__init__(*args, **kwargs)
 
     def create_component_manager(self) -> PcapFileComponentManager:
@@ -43,8 +43,18 @@ class PcapFileDevice(SKABaseDevice):
         )
 
     @attribute
-    def metadata(self) -> str:
-        return self._metadata.to_json()
+    def heap_count(self) -> int:
+        if self._metadata:
+            return self._metadata.heap_count
+
+        return -1
+
+    @attribute
+    def spead_headers(self) -> str:
+        if self._metadata:
+            return self._metadata.spead_headers.to_json()
+
+        return "{}"
 
     @command(dtype_out="DevVarLongStringArray")
     def Load(self) -> tuple[list[ResultCode], list[str]]:  # pylint: disable=invalid-name
@@ -64,19 +74,24 @@ class PcapFileDevice(SKABaseDevice):
     def is_Standby_allowed(self) -> bool:
         return False
 
-    def _update_metadata(self, metadata: pandas.DataFrame) -> None:
+    def _update_metadata(self, metadata: PcapFileMetadata) -> None:
         self._metadata = metadata
-        metadata_json = metadata.to_json()
-        self.push_change_event("metadata", metadata_json)
-        self.push_archive_event("metadata", metadata_json)
+
+        heap_count = metadata.heap_count
+        self.push_change_event("heap_count", heap_count)
+        self.push_archive_event("heap_count", heap_count)
+
+        spead_headers = metadata.spead_headers.to_json()
+        self.push_change_event("spead_headers", spead_headers)
+        self.push_archive_event("spead_headers", spead_headers)
 
     def _component_state_changed(
         self,
         fault: bool | None = None,
         power: PowerState | None = None,
-        metadata: pandas.DataFrame | None = None,
+        metadata: PcapFileMetadata | None = None,
     ) -> None:
         super()._component_state_changed(fault, power)
 
-        if metadata is not None:
+        if metadata:
             self._update_metadata(metadata)
