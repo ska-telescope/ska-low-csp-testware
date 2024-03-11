@@ -24,7 +24,7 @@ ska-tango-base:
 ska-low-csp-testware:
   image:
     registry: registry.gitlab.com/ska-telescope/ska-low-csp-testware
-    tag: 0.0.1-dev.c0eeba0ec
+    tag: 0.0.1-dev.cc669a87e
   deviceServers:
     pcap-helper:
       nodeSelector:
