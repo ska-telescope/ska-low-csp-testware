@@ -1,0 +1,43 @@
+environments:
+  default:
+    values:
+      - environments/default.yaml
+  digital-signal-psi:
+    values:
+      - environments/default.yaml
+      - environments/digital-signal-psi.yaml
+---
+repositories:
+  - name: skatelescope
+    url: https://artefact.skao.int/repository/helm-internal
+
+releases:
+  - name: ska-tango-base
+    namespace: '{{.Namespace | default "ska-low-csp-testware"}}'
+    chart: skatelescope/ska-tango-base
+    version: 0.4.9
+    values:
+      - values.yaml.gotmpl
+
+  - name: ska-low-csp-testware
+    namespace: '{{.Namespace | default "ska-low-csp-testware"}}'
+    chart: ../charts/ska-low-csp-testware
+    version: 0.0.1
+    values:
+      - values.yaml.gotmpl
+
+  - name: ska-tango-taranta
+    namespace: '{{.Namespace | default "ska-low-csp-testware"}}'
+    chart: skatelescope/ska-tango-taranta
+    version: 2.7.1
+    condition: taranta.enabled
+    values:
+      - values.yaml.gotmpl
+
+  - name: ska-tango-tangogql
+    namespace: '{{.Namespace | default "ska-low-csp-testware"}}'
+    chart: skatelescope/ska-tango-tangogql
+    version: 1.3.10
+    condition: taranta.enabled
+    values:
+      - values.yaml.gotmpl

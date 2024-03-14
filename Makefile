@@ -5,25 +5,43 @@
 SHELL = /bin/bash
 .SHELLFLAGS = -o pipefail -c
 
+########################################################################
+# BASE
+########################################################################
+
+include .make/base.mk
+
+PROJECT = ska-low-csp-testware
 DOCS_SPHINXOPTS ?= -W
 
-# Override base vars
-PROJECT = ska-low-csp-testware
+########################################################################
+# PYTHON
+########################################################################
 
-# Override vars for python targets
+include .make/python.mk
+
 PYTHON_LINE_LENGTH = 127
 
-K8S_CHART ?= test-parent
-K8S_CHARTS = $(K8S_CHART)
-K8S_UMBRELLA_CHART_PATH ?= charts/test-parent/
-HELM_CHARTS_TO_PUBLISH = $(PROJECT)
-HELM_CHARTS ?= $(HELM_CHARTS_TO_PUBLISH)
+########################################################################
+# HELM
+########################################################################
 
+include .make/helm.mk
 
--include .make/base.mk
--include .make/python.mk
--include .make/k8s.mk
--include .make/helm.mk
--include .make/oci.mk
+########################################################################
+# K8S
+########################################################################
+
+K8S_USE_HELMFILE = true
+K8S_HELMFILE = helmfile.d/helmfile.yaml
+K8S_HELMFILE_ENV ?= default
+
+include .make/k8s.mk
+
+########################################################################
+# OCI
+########################################################################
+
+include .make/oci.mk
 
 CI_JOB_ID ?= local
