@@ -14,7 +14,7 @@ from ska_tango_base.poller import PollingComponentManager
 from tango import Util
 from tango.server import attribute, device_property
 
-__all__ = ["PcapFileWatcher"]
+__all__ = ["PcapFileMonitor"]
 
 PCAP_FILE_DEVICE_CLASS = "PcapFile"
 
@@ -29,9 +29,9 @@ class _PollResponse:
     file_names: list[str]
 
 
-class PcapFileWatcherComponentManager(PollingComponentManager[_PollRequest, _PollResponse]):
+class PcapFileMonitorComponentManager(PollingComponentManager[_PollRequest, _PollResponse]):
     """
-    Component manager to watch a specified directory for PCAP files.
+    Component manager to monitor a specified directory for PCAP files.
 
     This component manager periodically polls and exposes the contents of the provided ``pcap_dir``.
     """
@@ -97,7 +97,7 @@ class PcapFileWatcherComponentManager(PollingComponentManager[_PollRequest, _Pol
         )
 
 
-class PcapFileWatcher(SKABaseDevice[PcapFileWatcherComponentManager]):
+class PcapFileMonitor(SKABaseDevice[PcapFileMonitorComponentManager]):
     """
     TANGO device that monitors a directory for PCAP files and spawns :py:class:`PcapFile`` devices to represent them.
     """
@@ -110,8 +110,8 @@ class PcapFileWatcher(SKABaseDevice[PcapFileWatcherComponentManager]):
         self._files: list[str] = []
         super().__init__(*args, **kwargs)
 
-    def create_component_manager(self) -> PcapFileWatcherComponentManager:
-        return PcapFileWatcherComponentManager(
+    def create_component_manager(self) -> PcapFileMonitorComponentManager:
+        return PcapFileMonitorComponentManager(
             pcap_dir=self.pcap_dir,
             logger=self.logger,
             communication_state_callback=self._communication_state_changed,

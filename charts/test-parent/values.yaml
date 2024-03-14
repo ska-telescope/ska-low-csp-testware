@@ -26,7 +26,7 @@ ska-low-csp-testware:
     registry: registry.gitlab.com/ska-telescope/ska-low-csp-testware
     tag: 0.0.1-dev.cd7f88ace
   deviceServers:
-    pcap-file-helper:
+    pcap-file-monitor:
       nodeSelector:
         kubernetes.io/hostname: clp-k8s-fpga-worker-1
       extraVolumes:

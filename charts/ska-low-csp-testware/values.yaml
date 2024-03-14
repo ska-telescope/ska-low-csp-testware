@@ -62,20 +62,20 @@ resources:
     memory: 16Gi
 
 deviceServers:
-  pcap-file-helper:
-    name: "pcap-file-helper-{{.Release.Name}}"
+  pcap-file-monitor:
+    name: "pcap-file-monitor-{{.Release.Name}}"
     function: testing
     domain: ska-low-csp-testware
     instances: ["1"]
-    command: "pcap_file_helper"
+    command: "pcap_file_monitor"
     server:
-      name: "pcap_file_helper"
+      name: "pcap_file_monitor"
       instances:
         - name: "1"
           classes:
-            - name: PcapFileWatcher
+            - name: PcapFileMonitor
               devices:
-                - name: "test/pcap-file-watcher/0"
+                - name: "test/pcap-file-monitor/0"
                   properties:
                     - name: "pcap_dir"
                       values:
