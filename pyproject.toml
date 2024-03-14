@@ -7,7 +7,7 @@ license = "BSD-3-Clause"
 readme = "README.md"
 
 [tool.poetry.scripts]
-pcap_file_device_server = 'ska_low_csp_testware.pcap_file_device_server:main'
+pcap_file_helper = 'ska_low_csp_testware.pcap_file_helper:main'
 
 [[tool.poetry.source]]
 name = "default"

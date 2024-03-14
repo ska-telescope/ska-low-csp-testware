@@ -62,25 +62,25 @@ resources:
     memory: 16Gi
 
 deviceServers:
-  pcap-helper:
-    name: "pcap-helper-{{.Release.Name}}"
+  pcap-file-helper:
+    name: "pcap-file-helper-{{.Release.Name}}"
     function: testing
     domain: ska-low-csp-testware
     instances: ["1"]
-    command: "pcap_file_device_server"
+    command: "pcap_file_helper"
     server:
-      name: "pcap_file_device_server"
+      name: "pcap_file_helper"
       instances:
         - name: "1"
           classes:
-            - name: PcapFileWatcherDevice
+            - name: PcapFileWatcher
               devices:
                 - name: "test/pcap-file-watcher/0"
                   properties:
                     - name: "pcap_dir"
                       values:
                         - "/pcap"
-            - name: PcapFileDevice
+            - name: PcapFile
               devices: []
     depends_on:
       - device: sys/database/2

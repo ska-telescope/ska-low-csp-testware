@@ -1,22 +1,110 @@
-# pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,broad-exception-caught
+"""
+Module for the ``PcapFileWatcher`` TANGO device.
+"""
 
 import functools
+import logging
 import os
+from dataclasses import dataclass
+from typing import Any, Callable
 
-from ska_control_model import PowerState
-from ska_tango_base.base import SKABaseDevice
+from ska_control_model import PowerState, TaskStatus
+from ska_tango_base.base import CommunicationStatusCallbackType, SKABaseDevice, TaskCallbackType
+from ska_tango_base.poller import PollingComponentManager
 from tango import Util
 from tango.server import attribute, device_property
 
-from ska_low_csp_testware.pcap_file_watcher_component_manager import PcapFileWatcherComponentManager
+__all__ = ["PcapFileWatcher"]
 
-__all__ = ["PcapFileWatcherDevice"]
-
-PCAP_FILE_DEVICE_CLASS = "PcapFileDevice"
+PCAP_FILE_DEVICE_CLASS = "PcapFile"
 
 
-class PcapFileWatcherDevice(SKABaseDevice):
-    pcap_dir: str = device_property()  # type: ignore
+@dataclass
+class _PollRequest:
+    pass
+
+
+@dataclass
+class _PollResponse:
+    file_names: list[str]
+
+
+class PcapFileWatcherComponentManager(PollingComponentManager[_PollRequest, _PollResponse]):
+    """
+    Component manager to watch a specified directory for PCAP files.
+
+    This component manager periodically polls and exposes the contents of the provided ``pcap_dir``.
+    """
+
+    def __init__(  # pylint: disable=too-many-arguments
+        self,
+        pcap_dir: str,
+        logger: logging.Logger,
+        communication_state_callback: CommunicationStatusCallbackType,
+        component_state_callback: Callable[..., None],
+        poll_rate: float = 5.0,
+        **state: Any,
+    ) -> None:
+        self._pcap_dir = pcap_dir
+        super().__init__(
+            logger=logger,
+            communication_state_callback=communication_state_callback,
+            component_state_callback=component_state_callback,
+            poll_rate=poll_rate,
+            **state,
+        )
+
+    def on(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
+        return TaskStatus.REJECTED, "Command not supported"
+
+    def standby(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
+        return TaskStatus.REJECTED, "Command not supported"
+
+    def off(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
+        return TaskStatus.REJECTED, "Command not supported"
+
+    def reset(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
+        return TaskStatus.REJECTED, "Command not supported"
+
+    def abort_commands(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
+        return TaskStatus.REJECTED, "Command not supported"
+
+    def get_request(self) -> _PollRequest:
+        return _PollRequest()
+
+    def poll(self, poll_request: _PollRequest) -> _PollResponse:
+        files = []
+        for file_name in os.listdir(self._pcap_dir):
+            file_path = os.path.join(self._pcap_dir, file_name)
+            if os.path.isfile(file_path) and file_path.endswith(".pcap"):
+                files.append(file_name)
+
+        return _PollResponse(
+            file_names=files,
+        )
+
+    def polling_started(self) -> None:
+        super().polling_started()
+        self._update_component_state(
+            power=PowerState.ON,
+            fault=False,
+        )
+
+    def poll_succeeded(self, poll_response: _PollResponse) -> None:
+        super().poll_succeeded(poll_response)
+        self._update_component_state(
+            files=poll_response.file_names,
+        )
+
+
+class PcapFileWatcher(SKABaseDevice[PcapFileWatcherComponentManager]):
+    """
+    TANGO device that monitors a directory for PCAP files and spawns :py:class:`PcapFile`` devices to represent them.
+    """
+
+    pcap_dir: str = device_property(  # type: ignore
+        doc="Absolute path on disk that points to a directory containing PCAP files"
+    )
 
     def __init__(self, *args, **kwargs):
         self._files: list[str] = []
@@ -31,8 +119,13 @@ class PcapFileWatcherDevice(SKABaseDevice):
             files=self._files,
         )
 
-    @attribute(max_dim_x=9999)
+    @attribute(label="PCAP file names", max_dim_x=9999)
     def files(self) -> list[str]:
+        """
+        TANGO attribute that exposes the current PCAP files contained in the configured directory.
+
+        :returns: List of file names local to the directory.
+        """
         return self._files
 
     def _component_state_changed(
@@ -77,7 +170,7 @@ class PcapFileWatcherDevice(SKABaseDevice):
                 dev_name,
                 cb=functools.partial(self._create_pcap_file_device_properties, file_name),
             )
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             self.logger.error("Failed to create device %s", dev_name, exc_info=True)
 
     def _create_pcap_file_device_properties(self, file_name: str, dev_name: str) -> None:
@@ -94,7 +187,7 @@ class PcapFileWatcherDevice(SKABaseDevice):
         self.logger.info("Removing device %s", dev_name)
         try:
             Util.instance().delete_device(PCAP_FILE_DEVICE_CLASS, dev_name)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             self.logger.error("Failed to remove device %s", dev_name, exc_info=True)
 
     def _is_device_defined(self, dev_name: str) -> bool:
