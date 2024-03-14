@@ -14,7 +14,11 @@ release = "0.0.1"
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ["sphinx.ext.extlinks", "sphinx.ext.intersphinx"]
+extensions = [
+    "sphinx.ext.extlinks",
+    "sphinx.ext.intersphinx",
+    "autoapi.extension",
+]
 
 source_suffix = [".rst"]
 exclude_patterns = []
@@ -46,3 +50,9 @@ html_context = {
     "theme_vcs_pageview_mode": "edit",
     "suffix": ".rst",
 }
+
+# -- sphinx-autoapi configuration ----------------------------------------------
+# https://github.com/readthedocs/sphinx-autoapi
+
+autoapi_dirs = ["../../src/ska_low_csp_testware"]
+autoapi_root = "api"
