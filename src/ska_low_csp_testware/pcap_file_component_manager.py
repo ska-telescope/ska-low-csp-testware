@@ -3,14 +3,16 @@
 import logging
 import os
 import threading
+from dataclasses import dataclass
 from typing import Any, Callable
 
 import pandas
 import spead2
 import spead2.recv
-from ska_control_model import CommunicationStatus, PowerState, TaskStatus
+from ska_control_model import PowerState, TaskStatus
 from ska_tango_base.base import CommunicationStatusCallbackType, TaskCallbackType
-from ska_tango_base.executor import TaskExecutorComponentManager
+from ska_tango_base.executor import TaskExecutor
+from ska_tango_base.poller import PollingComponentManager
 
 from ska_low_csp_testware.pcap_file_metadata import PcapFileMetadata
 from ska_low_csp_testware.spead import SpeadHeapVisitor, read_pcap_file
@@ -44,41 +46,57 @@ class _ExtractMetadata(SpeadHeapVisitor):
         )
 
 
-class PcapFileComponentManager(TaskExecutorComponentManager):
-    def __init__(
+@dataclass
+class PollRequest:
+    pass
+
+
+@dataclass
+class PollResponse:
+    file_info: os.stat_result
+
+
+class PcapFileComponentManager(PollingComponentManager[PollRequest, PollResponse]):
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         pcap_file_path: str,
         logger: logging.Logger,
-        communication_state_callback: CommunicationStatusCallbackType | None = None,
-        component_state_callback: Callable[..., None] | None = None,
-        **state: Any
+        communication_state_callback: CommunicationStatusCallbackType,
+        component_state_callback: Callable[..., None],
+        poll_rate: float = 1.0,
+        max_queue_size: int = 32,
+        max_workers: int | None = 1,
+        **state: Any,
     ) -> None:
         self._pcap_file_path = pcap_file_path
+        self._max_queue_size = max_queue_size
+        self._task_executor = TaskExecutor(max_workers)
         super().__init__(
             logger,
             communication_state_callback,
             component_state_callback,
-            power=PowerState.UNKNOWN,
-            fault=None,
+            poll_rate,
             **state,
         )
 
-    def start_communicating(self) -> None:
-        if self.communication_state == CommunicationStatus.ESTABLISHED:
-            return
+    def get_request(self) -> PollRequest:
+        return PollRequest()
 
-        if self.communication_state == CommunicationStatus.DISABLED:
-            self._update_communication_state(CommunicationStatus.NOT_ESTABLISHED)
+    def poll(self, poll_request: PollRequest) -> PollResponse:
+        return PollResponse(
+            file_info=os.stat(self._pcap_file_path),
+        )
 
+    def polling_started(self) -> None:
+        super().polling_started()
         self._update_component_state(power=PowerState.ON, fault=False)
-        self._update_communication_state(CommunicationStatus.ESTABLISHED)
 
-    def stop_communicating(self) -> None:
-        if self.communication_state == CommunicationStatus.DISABLED:
-            return
-
-        self._update_component_state(power=PowerState.UNKNOWN, fault=None)
-        self._update_communication_state(CommunicationStatus.DISABLED)
+    def poll_succeeded(self, poll_response: PollResponse) -> None:
+        super().poll_succeeded(poll_response)
+        self._update_component_state(
+            file_size=poll_response.file_info.st_size,
+            file_time_modified=poll_response.file_info.st_mtime_ns,
+        )
 
     def on(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
         return TaskStatus.REJECTED, "Command not supported"
@@ -92,6 +110,11 @@ class PcapFileComponentManager(TaskExecutorComponentManager):
     def reset(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
         return TaskStatus.REJECTED, "Command not supported"
 
+    def abort_commands(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
+        if task_callback:
+            task_callback(status=TaskStatus.IN_PROGRESS)
+        return self._task_executor.abort(task_callback)
+
     def delete(self) -> None:
         file_path = self._pcap_file_path
         self.logger.info("Deleting file %s", file_path)
@@ -100,9 +123,10 @@ class PcapFileComponentManager(TaskExecutorComponentManager):
         except Exception:
             self.logger.error("Failed to delete file %s", file_path, exc_info=True)
             raise
+        self.stop_communicating()
 
     def load(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        return self.submit_task(self._load, task_callback=task_callback)
+        return self._submit_task(self._load, task_callback=task_callback)
 
     def _load(
         self,
@@ -129,3 +153,20 @@ class PcapFileComponentManager(TaskExecutorComponentManager):
             self.logger.error("Failed to load file %s", self._pcap_file_path, exc_info=True)
             self._update_component_state(fault=True)
             task_callback(status=TaskStatus.FAILED, exception=e)
+
+    def _submit_task(  # pylint: disable=too-many-arguments
+        self,
+        func: Callable[..., None],
+        args: Any = None,
+        kwargs: Any = None,
+        is_cmd_allowed: Callable[[], bool] | None = None,
+        task_callback: TaskCallbackType | None = None,
+    ) -> tuple[TaskStatus, str]:
+        input_queue_size = self._task_executor.get_input_queue_size()
+        if input_queue_size < self._max_queue_size:
+            return self._task_executor.submit(func, args, kwargs, is_cmd_allowed, task_callback=task_callback)
+
+        return (
+            TaskStatus.REJECTED,
+            f"Input queue supports a maximum of {self._max_queue_size} commands",
+        )
