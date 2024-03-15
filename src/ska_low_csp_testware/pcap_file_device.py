@@ -15,7 +15,7 @@ import spead2
 import spead2.recv
 from ska_control_model import PowerState, ResultCode, TaskStatus
 from ska_tango_base.base import CommunicationStatusCallbackType, SKABaseDevice, TaskCallbackType
-from ska_tango_base.commands import FastCommand, SubmittedSlowCommand
+from ska_tango_base.commands import DeviceInitCommand, FastCommand, SubmittedSlowCommand
 from ska_tango_base.executor import TaskExecutor
 from ska_tango_base.poller import PollingComponentManager
 from tango.server import attribute, command, device_property
@@ -239,6 +239,17 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
             file_time_modified=self._file_time_modified,
             file_size=self._file_size,
         )
+
+    class InitCommand(DeviceInitCommand):
+        """
+        Class for the TANGO device's ``Init()`` command.
+        """
+
+        def do(self, *args: Any, **kwargs: Any) -> tuple[ResultCode, str]:
+            for attr_name in ["file_size", "file_time_modified", "heap_count", "spead_headers"]:
+                self._device.set_change_event(attr_name, True, False)
+
+            return ResultCode.OK, "Init completed"
 
     class DeleteCommand(FastCommand[None]):
         """
