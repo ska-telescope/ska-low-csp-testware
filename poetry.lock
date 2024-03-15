@@ -1635,6 +1635,27 @@ url = "https://artefact.skao.int/repository/pypi-internal/simple"
 reference = "ska-nexus"
 
 [[package]]
+name = "ska-tango-testing"
+version = "0.6.1"
+description = "Test harness for testing SKA Tango devices"
+category = "dev"
+optional = false
+python-versions = ">=3.8.1,<4.0.0"
+files = [
+    {file = "ska_tango_testing-0.6.1-py3-none-any.whl", hash = "sha256:c8d636719d5aef6499e144b340f007dbee0944c83320db83c8fbcdb941486abe"},
+    {file = "ska_tango_testing-0.6.1.tar.gz", hash = "sha256:defbb84b6dc2bc6675828fd393f8521cc4cc768252ad5d7c786e5dfab2ff381f"},
+]
+
+[package.dependencies]
+numpy = ">=1.19.0,<2.0.0"
+pytango = ">=9.3.3,<10.0.0"
+
+[package.source]
+type = "legacy"
+url = "https://artefact.skao.int/repository/pypi-internal/simple"
+reference = "ska-nexus"
+
+[[package]]
 name = "snowballstemmer"
 version = "2.2.0"
 description = "This package provides 29 stemmers for 28 languages generated from Snowball algorithms."
@@ -2057,4 +2078,4 @@ reference = "default"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "3bef97c91535673036580f4342a6fbf803e8c7086f3ef98485957a9d12cbbd7e"
+content-hash = "61c0a014f8f4b2399b83e9b4fa00789367d3f63b66c01928a673805baa9c8bc4"

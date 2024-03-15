@@ -7,6 +7,7 @@ import os
 import threading
 from dataclasses import dataclass
 from logging import Logger
+from pathlib import Path
 from typing import Any, Callable
 
 import pandas
@@ -79,7 +80,7 @@ class PcapFileComponentManager(PollingComponentManager[_PollRequest, _PollRespon
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
-        pcap_file_path: str,
+        pcap_file_path: Path,
         logger: logging.Logger,
         communication_state_callback: CommunicationStatusCallbackType,
         component_state_callback: Callable[..., None],
@@ -104,7 +105,7 @@ class PcapFileComponentManager(PollingComponentManager[_PollRequest, _PollRespon
 
     def poll(self, poll_request: _PollRequest) -> _PollResponse:
         return _PollResponse(
-            file_info=os.stat(self._pcap_file_path),
+            file_info=self._pcap_file_path.stat(),
         )
 
     def polling_started(self) -> None:
@@ -144,14 +145,15 @@ class PcapFileComponentManager(PollingComponentManager[_PollRequest, _PollRespon
 
         After the file is removed, the component manager automatically stops polling the file information.
         """
+        self.stop_communicating()
         file_path = self._pcap_file_path
         self.logger.info("Deleting file %s", file_path)
         try:
-            os.remove(file_path)
+            file_path.unlink()
         except Exception:
             self.logger.error("Failed to delete file %s", file_path, exc_info=True)
+            self.start_communicating()
             raise
-        self.stop_communicating()
 
     def load(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
         """
@@ -174,7 +176,7 @@ class PcapFileComponentManager(PollingComponentManager[_PollRequest, _PollRespon
         visitor = _ExtractMetadata()
         try:
             read_pcap_file(
-                pcap_file_path=self._pcap_file_path,
+                pcap_file_path=str(self._pcap_file_path),
                 visitors=[visitor],
                 logger=self.logger,
                 task_abort_event=task_abort_event,
@@ -229,12 +231,11 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
 
     def create_component_manager(self) -> PcapFileComponentManager:
         return PcapFileComponentManager(
-            pcap_file_path=self.pcap_file_path,
+            pcap_file_path=Path(self.pcap_file_path),
             logger=self.logger,
             communication_state_callback=self._communication_state_changed,
             component_state_callback=self._component_state_changed,
             metadata=self._metadata,
-            file_time_created=self._file_time_created,
             file_time_modified=self._file_time_modified,
             file_size=self._file_size,
         )
