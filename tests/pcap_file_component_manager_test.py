@@ -11,6 +11,7 @@ from ska_control_model import CommunicationStatus, PowerState
 from ska_tango_testing.mock import MockCallableGroup, placeholders
 
 from ska_low_csp_testware import pcap_file_device
+from ska_low_csp_testware.common_types import DataType
 from ska_low_csp_testware.pcap_file_device import PcapFileComponentManager
 
 POLL_RATE = 0.1
@@ -137,5 +138,5 @@ def test_component_state_changes_when_loading_file_contents(
         return _call
 
     monkeypatch.setattr(pcap_file_device, "ReadLowCbfVisibilitiesTask", mocktask)
-    component_manager.load()
+    component_manager.load(DataType.VIS)
     callbacks["component_state"].assert_call(file_contents=42)

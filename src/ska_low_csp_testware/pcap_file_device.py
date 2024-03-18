@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
+import numpy.typing as npt
+import pandas as pd
 from ska_control_model import PowerState, ResultCode, TaskStatus
 from ska_tango_base.base import CommunicationStatusCallbackType, SKABaseDevice, TaskCallbackType
 from ska_tango_base.commands import DeviceInitCommand, FastCommand, SubmittedSlowCommand
@@ -18,9 +20,13 @@ from ska_tango_base.executor import TaskExecutor
 from ska_tango_base.poller import PollingComponentManager
 from tango.server import attribute, command, device_property
 
-from ska_low_csp_testware.low_cbf_vis import LowCbfVisibilities, ReadLowCbfVisibilitiesTask
+from ska_low_csp_testware.common_types import DataType, PcapFileContents
+from ska_low_csp_testware.low_cbf_vis import ReadLowCbfVisibilitiesTask
 
-__all__ = ["PcapFile"]
+__all__ = [
+    "PcapFile",
+    "PcapFileComponentManager",
+]
 
 
 @dataclass
@@ -118,21 +124,27 @@ class PcapFileComponentManager(PollingComponentManager[_PollRequest, _PollRespon
             self.start_communicating()
             raise
 
-    def load(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
+    def load(self, data_type: DataType, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
         """
         Load the PCAP file contents into memory.
 
         When called, the file is read in a background task on a separate thread.
         The supplied ``task_callback`` is invoked as the task progresses and when it finishes.
 
+        :param data_type: The type of data contained in the PCAP file.
         :param task_callback: An optional callback that is invoked with task status updates.
         :returns: The initial task status and message after submitting the task.
         """
-        task = ReadLowCbfVisibilitiesTask(
-            pcap_file_path=self._pcap_file_path,
-            result_callback=lambda result: self._update_component_state(file_contents=result),
-            logger=self.logger,
-        )
+        match data_type:
+            case DataType.VIS:
+                task = ReadLowCbfVisibilitiesTask(
+                    pcap_file_path=self._pcap_file_path,
+                    result_callback=lambda contents: self._update_component_state(file_contents=contents),
+                    logger=self.logger,
+                )
+            case _:
+                return TaskStatus.REJECTED, "Unsupported data type"
+
         return self._submit_task(task, task_callback=task_callback)
 
     def _submit_task(  # pylint: disable=too-many-arguments
@@ -161,9 +173,9 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
     pcap_file_path: str = device_property(doc="Absolute path on disk that points to a valid PCAP file")  # type: ignore
 
     def __init__(self, *args, **kwargs):
-        self._file_contents: LowCbfVisibilities | None = None
-        self._file_time_modified = 0
+        self._file_contents: PcapFileContents | None = None
         self._file_size = 0
+        self._file_time_modified = 0
         super().__init__(*args, **kwargs)
 
     def create_component_manager(self) -> PcapFileComponentManager:
@@ -183,7 +195,13 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         """
 
         def do(self, *args: Any, **kwargs: Any) -> tuple[ResultCode, str]:
-            for attr_name in ["file_size", "file_time_modified", "heap_count", "spead_headers"]:
+            for attr_name in [
+                "file_size",
+                "file_time_modified",
+                "spead_heap_count",
+                "spead_headers",
+                "spead_data",
+            ]:
                 self._device.set_change_event(attr_name, True, False)
 
             return ResultCode.OK, "Init completed"
@@ -255,8 +273,8 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         """
         return self._file_time_modified
 
-    @attribute(label="Number of SPEAD heaps")
-    def heap_count(self) -> int:
+    @attribute(label="SPEAD heap count")
+    def spead_heap_count(self) -> int:
         """
         The number of SPEAD heaps in the PCAP file.
 
@@ -264,11 +282,11 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         :raises ValueError: When the file contents are not loaded into memory.
         """
         if self._file_contents:
-            return self._file_contents.heap_count
+            return self._file_contents.spead_heap_count
 
         raise ValueError("File contents not loaded")
 
-    @attribute(label="SPEAD header contents")
+    @attribute(label="SPEAD headers")
     def spead_headers(self) -> str:
         """
         The SPEAD header contents of the PCAP file.
@@ -277,22 +295,20 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         :raises ValueError: When the file contents are not loaded into memory.
         """
         if self._file_contents:
-            return self._file_contents.metadata.to_json()
+            return self._encode_spead_headers(self._file_contents.spead_headers)
 
         raise ValueError("File contents not loaded")
 
-    @attribute(label="Visibility data", dtype="DevEncoded")
-    def visibility_data(self) -> bytes:
+    @attribute(label="SPEAD data", dtype="DevEncoded")
+    def spead_data(self) -> bytes:
         """
-        The visibility data contents of the PCAP file.
+        The SPEAD data contents of the PCAP file.
 
-        :returns: Visibility data encoded using ``numpy.save``.
+        :returns: A ``numpy.NDArray`` encoded using ``numpy.save``.
         :raises ValueError: When the file contents are not loaded into memory.
         """
         if self._file_contents:
-            buf = io.BytesIO()
-            np.save(buf, self._file_contents.averaged_data)
-            return buf.getvalue()
+            return self._encode_spead_data(self._file_contents.spead_data)
 
         raise ValueError("File contents not loaded")
 
@@ -304,8 +320,12 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         handler = self.get_command_object("Delete")
         handler()
 
-    @command(dtype_out="DevVarLongStringArray", doc_out="Tuple containing the result code and corresponding message")
-    def Load(self) -> tuple[list[ResultCode], list[str]]:  # pylint: disable=invalid-name
+    @command(
+        doc_in="The type of data contained in the PCAP file",
+        dtype_out="DevVarLongStringArray",
+        doc_out="Tuple containing the result code and corresponding message",
+    )
+    def Load(self, data_type: DataType) -> tuple[list[ResultCode], list[str]]:  # pylint: disable=invalid-name
         """
         Load the PCAP file contents into memory asynchronously.
 
@@ -315,37 +335,37 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         :returns: Tuple containing the initial command result code and message.
         """
         handler = self.get_command_object("Load")
-        result, message = handler()
+        result, message = handler(data_type)
         return [result], [message]
 
-    def _update_attr(self, attr_name: str, attr_value: Any) -> None:
-        setattr(self, f"_{attr_name}", attr_value)
-        self.push_change_event(attr_name, attr_value)
-        self.push_archive_event(attr_name, attr_value)
+    def _encode_spead_headers(self, spead_headers: pd.DataFrame) -> str:
+        return spead_headers.to_json()
 
-    def _update_file_contents(self, file_contents: LowCbfVisibilities) -> None:
-        self._file_contents = file_contents
+    def _encode_spead_data(self, spead_data: npt.NDArray) -> bytes:
+        buffer = io.BytesIO()
+        np.save(buffer, spead_data)
+        return buffer.getvalue()
 
-        heap_count = file_contents.heap_count
-        self.push_change_event("heap_count", heap_count)
-        self.push_archive_event("heap_count", heap_count)
-
-        spead_headers = file_contents.metadata.to_json()
-        self.push_change_event("spead_headers", spead_headers)
-        self.push_archive_event("spead_headers", spead_headers)
-
-    def _component_state_changed(
+    def _component_state_changed(  # pylint: disable=too-many-arguments
         self,
         fault: bool | None = None,
         power: PowerState | None = None,
-        file_contents: LowCbfVisibilities | None = None,
-        **state,
+        file_contents: PcapFileContents | None = None,
+        file_size: int | None = None,
+        file_time_modified: int | None = None,
     ) -> None:
         super()._component_state_changed(fault, power)
 
         if file_contents:
-            self._update_file_contents(file_contents)
+            self._file_contents = file_contents
+            self.push_change_event("spead_heap_count", file_contents.spead_heap_count)
+            self.push_change_event("spead_headers", self._encode_spead_headers(file_contents.spead_headers))
+            self.push_change_event("spead_data", self._encode_spead_data(file_contents.spead_data))
 
-        for state_attr in ["file_size", "file_time_modified"]:
-            if state_attr in state:
-                self._update_attr(state_attr, state[state_attr])
+        if file_size is not None:
+            self._file_size = file_size
+            self.push_change_event("file_size", file_size)
+
+        if file_time_modified is not None:
+            self._file_time_modified = file_time_modified
+            self.push_change_event("file_time_modified", file_time_modified)

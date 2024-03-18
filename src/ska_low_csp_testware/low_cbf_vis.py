@@ -4,7 +4,6 @@ Module containing helpers to read LOW CBF visibility data.
 
 import logging
 import threading
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -15,23 +14,11 @@ from ska_control_model import TaskStatus
 from ska_tango_base.base import TaskCallbackType
 
 from ska_low_csp_testware import spead2_util
+from ska_low_csp_testware.common_types import PcapFileContents
 
-__all__ = ["LowCbfVisibilities", "ReadLowCbfVisibilitiesTask"]
+__all__ = ["ReadLowCbfVisibilitiesTask"]
 
 module_logger = logging.getLogger(__name__)
-
-VisibilityDataType = npt.NDArray[np.complex64]
-
-
-@dataclass
-class LowCbfVisibilities:
-    """
-    LOW-CBF visibility data.
-    """
-
-    heap_count: int
-    metadata: pd.DataFrame
-    averaged_data: VisibilityDataType
 
 
 class ReadLowCbfVisibilitiesTask:  # pylint: disable=too-few-public-methods
@@ -42,7 +29,7 @@ class ReadLowCbfVisibilitiesTask:  # pylint: disable=too-few-public-methods
     def __init__(
         self,
         pcap_file_path: Path,
-        result_callback: Callable[[LowCbfVisibilities], None],
+        result_callback: Callable[[PcapFileContents], None],
         logger: logging.Logger | None = None,
     ) -> None:
         self._pcap_file_path = pcap_file_path
@@ -51,7 +38,7 @@ class ReadLowCbfVisibilitiesTask:  # pylint: disable=too-few-public-methods
 
         self._heap_count = 0
         self._metadata = []
-        self._averaged_data: dict[int, VisibilityDataType] = {}
+        self._averaged_data: dict[int, npt.NDArray[np.complex64]] = {}
 
     def __call__(
         self,
@@ -87,10 +74,10 @@ class ReadLowCbfVisibilitiesTask:  # pylint: disable=too-few-public-methods
                 else:
                     self._averaged_data[channel_id] = data
 
-        result = LowCbfVisibilities(
-            heap_count=self._heap_count,
-            metadata=pd.DataFrame(self._metadata),
-            averaged_data=np.stack(list(self._averaged_data.values())),
+        result = PcapFileContents(
+            spead_heap_count=self._heap_count,
+            spead_headers=pd.DataFrame(self._metadata),
+            spead_data=np.stack(list(self._averaged_data.values())),
         )
         self._result_callback(result)
         task_callback(TaskStatus.COMPLETED)
