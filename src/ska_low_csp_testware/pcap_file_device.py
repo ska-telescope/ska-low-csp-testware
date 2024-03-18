@@ -281,8 +281,8 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
 
         raise ValueError("File contents not loaded")
 
-    @attribute(label="Visibility data", dtype="DevString")
-    def visibility_data(self) -> bytes:
+    @attribute(label="Visibility data", dtype="DevEncoded")
+    def visibility_data(self) -> tuple[str, bytes]:
         """
         The visibility data contents of the PCAP file.
 
@@ -292,7 +292,7 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         if self._file_contents:
             buf = BytesIO()
             np.save(buf, self._file_contents.averaged_data)
-            return buf.getvalue()
+            return "", buf.getvalue()
 
         raise ValueError("File contents not loaded")
 
