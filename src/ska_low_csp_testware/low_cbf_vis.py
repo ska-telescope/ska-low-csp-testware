@@ -34,7 +34,7 @@ class LowCbfVisibilities:
     averaged_data: VisibilityDataType
 
 
-class ReadLowCbfVisibilitiesTask:
+class ReadLowCbfVisibilitiesTask:  # pylint: disable=too-few-public-methods
     """
     Long-running task that reads LOW-CBF visibility data from a PCAP file.
     """
