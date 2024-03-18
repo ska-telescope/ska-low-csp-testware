@@ -281,7 +281,7 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
 
         raise ValueError("File contents not loaded")
 
-    @attribute(label="Visibility data")
+    @attribute(label="Visibility data", dtype="DevString")
     def visibility_data(self) -> bytes:
         """
         The visibility data contents of the PCAP file.
