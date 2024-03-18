@@ -2,10 +2,10 @@
 Module for the ``PcapFile`` TANGO device.
 """
 
+import io
 import logging
 import os
 from dataclasses import dataclass
-from io import BytesIO
 from logging import Logger
 from pathlib import Path
 from typing import Any, Callable
@@ -282,17 +282,17 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         raise ValueError("File contents not loaded")
 
     @attribute(label="Visibility data", dtype="DevEncoded")
-    def visibility_data(self) -> tuple[str, bytes]:
+    def visibility_data(self) -> bytes:
         """
         The visibility data contents of the PCAP file.
 
-        :returns: A serialized ``numpy.NDArray``.
+        :returns: Visibility data encoded using ``numpy.save``.
         :raises ValueError: When the file contents are not loaded into memory.
         """
         if self._file_contents:
-            buf = BytesIO()
+            buf = io.BytesIO()
             np.save(buf, self._file_contents.averaged_data)
-            return "", buf.getvalue()
+            return buf.getvalue()
 
         raise ValueError("File contents not loaded")
 
