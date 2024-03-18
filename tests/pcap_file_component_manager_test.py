@@ -10,6 +10,7 @@ import pytest
 from ska_control_model import CommunicationStatus, PowerState
 from ska_tango_testing.mock import MockCallableGroup, placeholders
 
+from ska_low_csp_testware import pcap_file_device
 from ska_low_csp_testware.pcap_file_device import PcapFileComponentManager
 
 POLL_RATE = 0.1
@@ -41,7 +42,7 @@ def fxt_component_manager(
         communication_state_callback=callbacks["communication_state"],
         component_state_callback=callbacks["component_state"],
         poll_rate=POLL_RATE,
-        metadata=None,
+        file_contents=None,
         file_time_modified=pcap_file.stat().st_mtime_ns,
         file_size=pcap_file.stat().st_size,
     )
@@ -115,3 +116,26 @@ def test_communication_state_changes_when_calling_delete_command(
     component_manager.delete()
     time.sleep(POLL_RATE)
     callbacks["communication_state"].assert_call(CommunicationStatus.DISABLED)
+
+
+def test_component_state_changes_when_loading_file_contents(
+    component_manager: PcapFileComponentManager,
+    callbacks: MockCallableGroup,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """
+    Test that checks that the component state is updated with the PCAP file contents when the ``load`` method is called.
+    """
+
+    def mocktask(**kwargs):
+        result_callback = kwargs.get("result_callback", None)
+
+        def _call(**kwargs):  # pylint: disable=unused-argument
+            if result_callback:
+                result_callback(42)
+
+        return _call
+
+    monkeypatch.setattr(pcap_file_device, "ReadLowCbfVisibilitiesTask", mocktask)
+    component_manager.load()
+    callbacks["component_state"].assert_call(file_contents=42)
