@@ -58,10 +58,8 @@ class ReadLowCbfVisibilitiesTask:
         task_callback: TaskCallbackType,
         task_abort_event: threading.Event,
     ) -> None:
-        self._logger.info("%s: Task started")
         for heap, items in spead2_util.read_pcap_file(self._pcap_file_path, self._logger):
             if task_abort_event.is_set():
-                self._logger.info("%s: Task aborted", self)
                 task_callback(status=TaskStatus.ABORTED)
                 return
 
@@ -96,7 +94,3 @@ class ReadLowCbfVisibilitiesTask:
         )
         self._result_callback(result)
         task_callback(TaskStatus.COMPLETED)
-        self._logger.info("%s: Task completed", self)
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self._pcap_file_path})"
