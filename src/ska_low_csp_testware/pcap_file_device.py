@@ -300,7 +300,7 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         raise ValueError("File contents not loaded")
 
     @attribute(label="SPEAD data", dtype="DevEncoded")
-    def spead_data(self) -> bytes:
+    def spead_data(self) -> tuple[str, bytes]:
         """
         The SPEAD data contents of the PCAP file.
 
@@ -308,7 +308,7 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         :raises ValueError: When the file contents are not loaded into memory.
         """
         if self._file_contents:
-            return self._encode_spead_data(self._file_contents.spead_data)
+            return "numpy.NDArray", self._encode_spead_data(self._file_contents.spead_data)
 
         raise ValueError("File contents not loaded")
 
