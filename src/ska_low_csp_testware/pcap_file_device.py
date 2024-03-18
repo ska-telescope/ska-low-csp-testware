@@ -5,10 +5,12 @@ Module for the ``PcapFile`` TANGO device.
 import logging
 import os
 from dataclasses import dataclass
+from io import BytesIO
 from logging import Logger
 from pathlib import Path
 from typing import Any, Callable
 
+import numpy as np
 from ska_control_model import PowerState, ResultCode, TaskStatus
 from ska_tango_base.base import CommunicationStatusCallbackType, SKABaseDevice, TaskCallbackType
 from ska_tango_base.commands import DeviceInitCommand, FastCommand, SubmittedSlowCommand
@@ -128,14 +130,10 @@ class PcapFileComponentManager(PollingComponentManager[_PollRequest, _PollRespon
         """
         task = ReadLowCbfVisibilitiesTask(
             pcap_file_path=self._pcap_file_path,
-            result_callback=self._update_file_contents,
+            result_callback=lambda result: self._update_component_state(file_contents=result),
             logger=self.logger,
         )
         return self._submit_task(task, task_callback=task_callback)
-
-    def _update_file_contents(self, contents: LowCbfVisibilities):
-        self.logger.info("Received new file contents: %s", contents)
-        self._update_component_state(file_contents=contents)
 
     def _submit_task(  # pylint: disable=too-many-arguments
         self,
@@ -280,6 +278,21 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         """
         if self._file_contents:
             return self._file_contents.metadata.to_json()
+
+        raise ValueError("File contents not loaded")
+
+    @attribute(label="Visibility data")
+    def visibility_data(self) -> bytes:
+        """
+        The visibility data contents of the PCAP file.
+
+        :returns: A serialized ``numpy.NDArray``.
+        :raises ValueError: When the file contents are not loaded into memory.
+        """
+        if self._file_contents:
+            buf = BytesIO()
+            np.save(buf, self._file_contents.averaged_data)
+            return buf.getvalue()
 
         raise ValueError("File contents not loaded")
 
