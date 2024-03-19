@@ -20,8 +20,8 @@ def _is_monitored_file(path: Path):
     return path.suffix == ".pcap"
 
 
-def _monitor_filter(change: watchfiles.Change, path: str):  # pylint: disable=unused-argument
-    return _is_monitored_file(Path(path))
+def _monitor_filter(change: watchfiles.Change, path: str):
+    return change in {watchfiles.Change.added, watchfiles.Change.deleted} and _is_monitored_file(Path(path))
 
 
 class PcapFileMonitor(Device):
@@ -94,7 +94,6 @@ class PcapFileMonitor(Device):
             stop_event=self._stop_event,
         ):
             for change, path in changes:
-                self.debug_stream("File %s was %s", path, change)
                 match change:
                     case watchfiles.Change.added:
                         await self._add_file(Path(path))

@@ -123,10 +123,10 @@ class PcapFile(Device):
             for change, _ in changes:
                 match change:
                     case watchfiles.Change.modified:
-                        self.debug_stream("File modification detected")
+                        self.debug_stream("File modified")
                         await self._update_file_attributes()
                     case watchfiles.Change.deleted:
-                        self.debug_stream("File deletion detected")
+                        self.info_stream("File deleted")
                         self._stop_event.set()
 
         self.info_stream("Stop monitoring file")
