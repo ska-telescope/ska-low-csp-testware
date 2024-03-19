@@ -108,7 +108,7 @@ class PcapFileComponentManager(PollingComponentManager[_PollRequest, _PollRespon
             task_callback(status=TaskStatus.IN_PROGRESS)
         return self._task_executor.abort(task_callback)
 
-    def delete(self) -> None:
+    def delete_file(self) -> None:
         """
         Delete the PCAP file on disk.
 
@@ -124,7 +124,7 @@ class PcapFileComponentManager(PollingComponentManager[_PollRequest, _PollRespon
             self.start_communicating()
             raise
 
-    def load(self, data_type: DataType, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
+    def load_file(self, data_type: DataType, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
         """
         Load the PCAP file contents into memory.
 
@@ -206,9 +206,9 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
 
             return ResultCode.OK, "Init completed"
 
-    class DeleteCommand(FastCommand[None]):
+    class DeleteFileCommand(FastCommand[None]):
         """
-        Class for the TANGO device's ``Delete()`` command.
+        Class for the TANGO device's ``DeleteFile()`` command.
         """
 
         def __init__(
@@ -220,26 +220,26 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
             super().__init__(logger)
 
         def do(self, *args: Any, **kwargs: Any) -> None:
-            self._component_manager.delete()
+            self._component_manager.delete_file()
 
     def init_command_objects(self) -> None:
         super().init_command_objects()
 
         self.register_command_object(
-            "Delete",
-            self.DeleteCommand(
+            "DeleteFile",
+            self.DeleteFileCommand(
                 self.component_manager,
                 self.logger,
             ),
         )
 
         self.register_command_object(
-            "Load",
+            "LoadFile",
             SubmittedSlowCommand(
-                "Load",
+                "LoadFile",
                 self._command_tracker,
                 self.component_manager,
-                "load",
+                "load_file",
                 callback=None,
                 logger=self.logger,
             ),
@@ -313,11 +313,11 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         raise ValueError("File contents not loaded")
 
     @command
-    def Delete(self) -> None:  # pylint: disable=invalid-name
+    def DeleteFile(self) -> None:  # pylint: disable=invalid-name
         """
         Delete the PCAP file on disk.
         """
-        handler = self.get_command_object("Delete")
+        handler = self.get_command_object("DeleteFile")
         handler()
 
     @command(
@@ -325,7 +325,7 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         dtype_out="DevVarLongStringArray",
         doc_out="Tuple containing the result code and corresponding message",
     )
-    def Load(self, data_type: DataType) -> tuple[list[ResultCode], list[str]]:  # pylint: disable=invalid-name
+    def LoadFile(self, data_type: DataType) -> tuple[list[ResultCode], list[str]]:  # pylint: disable=invalid-name
         """
         Load the PCAP file contents into memory asynchronously.
 
@@ -334,7 +334,7 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
 
         :returns: Tuple containing the initial command result code and message.
         """
-        handler = self.get_command_object("Load")
+        handler = self.get_command_object("LoadFile")
         result, message = handler(data_type)
         return [result], [message]
 

@@ -104,7 +104,7 @@ def test_delete_command(
         consume_nonmatches=True,
     )
 
-    device.Delete()
+    device.DeleteFile()
 
     change_event_callbacks["state"].assert_change_event(tango.DevState.DISABLE)
 

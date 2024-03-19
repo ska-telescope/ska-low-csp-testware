@@ -103,7 +103,7 @@ def test_delete_file(
     """
     Test that checks that the component manager's ``delete`` method deletes the PCAP file from disk.
     """
-    component_manager.delete()
+    component_manager.delete_file()
     assert not pcap_file.exists()
 
 
@@ -114,7 +114,7 @@ def test_communication_state_changes_when_calling_delete_command(
     """
     Test that checks that the component manager turns itself off after deleting the PCAP file.
     """
-    component_manager.delete()
+    component_manager.delete_file()
     time.sleep(POLL_RATE)
     callbacks["communication_state"].assert_call(CommunicationStatus.DISABLED)
 
@@ -138,5 +138,5 @@ def test_component_state_changes_when_loading_file_contents(
         return _call
 
     monkeypatch.setattr(pcap_file_device, "ReadLowCbfVisibilitiesTask", mocktask)
-    component_manager.load(DataType.VIS)
+    component_manager.load_file(DataType.VIS)
     callbacks["component_state"].assert_call(file_contents=42)
