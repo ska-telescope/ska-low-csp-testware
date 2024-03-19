@@ -91,9 +91,11 @@ class PcapReader(Device):
 
     async def _process_existing_files(self) -> None:
         path = Path(self.pcap_dir)
-        for file in path.iterdir():
-            if _is_monitored_file(file):
-                await self._update_file(file)
+        for root, _, file_names in path.walk():  # pylint: disable=no-member
+            for file_name in file_names:
+                file = root / file_name
+                if _is_monitored_file(file):
+                    await self._update_file(file)
 
     async def _start_monitoring(self) -> None:
         await self._process_existing_files()
@@ -108,6 +110,7 @@ class PcapReader(Device):
             self.pcap_dir,
             watch_filter=_monitor_filter,
             ignore_permission_denied=True,
+            rust_timeout=0,
             stop_event=self._stop_event,
         ):
             for change, path in changes:
