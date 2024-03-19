@@ -19,7 +19,12 @@ class DataType(IntEnum):
     The type of data contained in the PCAP file.
     """
 
-    VIS = 0
+    NOT_CONFIGURED = 0
+    """
+    The data type is not configured.
+    """
+
+    VIS = 1
     """
     Visibility data received from LOW-CBF.
     """

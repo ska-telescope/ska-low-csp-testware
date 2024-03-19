@@ -18,6 +18,8 @@ from tango.test_context import DeviceTestContext
 from ska_low_csp_testware.common_types import DataType
 from ska_low_csp_testware.pcap_file_device import PcapFile
 
+pytestmark = pytest.mark.forked
+
 
 @pytest.fixture(name="pcap_file")
 def fxt_pcap_file(tmp_path: Path):
@@ -36,7 +38,8 @@ def fxt_change_event_callbacks():
     """
     return MockTangoEventCallbackGroup(
         "file_size",
-        "file_time_modified",
+        "file_modification_datetime",
+        "file_modification_timestamp",
         "state",
     )
 
@@ -57,8 +60,6 @@ def fxt_device(pcap_file: Path):
         yield device
 
 
-@pytest.mark.debug
-@pytest.mark.forked
 def test_file_attributes_react_to_changes(
     pcap_file: Path,
     device: DeviceProxy,
@@ -71,9 +72,14 @@ def test_file_attributes_react_to_changes(
     assert device.state() == DevState.ON
 
     original_size = device.file_size
-    original_time_modified = device.file_time_modified
+    original_modification_datetime = device.file_modification_datetime
+    original_modification_timestamp = device.file_modification_timestamp
 
-    for attr_name in ["file_size", "file_time_modified"]:
+    for attr_name in [
+        "file_size",
+        "file_modification_datetime",
+        "file_modification_timestamp",
+    ]:
         device.subscribe_event(
             attr_name,
             EventType.CHANGE_EVENT,
@@ -83,24 +89,23 @@ def test_file_attributes_react_to_changes(
     time.sleep(0.5)
 
     change_event_callbacks["file_size"].assert_change_event(original_size)
-    change_event_callbacks["file_time_modified"].assert_change_event(original_time_modified)
+    change_event_callbacks["file_modification_datetime"].assert_change_event(original_modification_datetime)
+    change_event_callbacks["file_modification_timestamp"].assert_change_event(original_modification_timestamp)
 
     with pcap_file.open("w", encoding="utf8") as writer:
         writer.write("Hello, world!")
 
-    time.sleep(1)
+    time.sleep(0.5)
 
     assert device.file_size == 13
-    assert device.file_time_modified > original_time_modified
+    assert device.file_modification_datetime > original_modification_datetime
+    assert device.file_modification_timestamp > original_modification_timestamp
     change_event_callbacks["file_size"].assert_change_event(device.file_size)
-    change_event_callbacks["file_time_modified"].assert_change_event(device.file_time_modified)
+    change_event_callbacks["file_modification_datetime"].assert_change_event(device.file_modification_datetime)
+    change_event_callbacks["file_modification_timestamp"].assert_change_event(device.file_modification_timestamp)
 
 
-@pytest.mark.forked
-def test_delete_file_command(
-    pcap_file: Path,
-    device: DeviceProxy,
-):
+def test_delete_file_command(pcap_file: Path, device: DeviceProxy):
     """
     Test case for the ``DeleteFile`` command.
 
@@ -117,14 +122,12 @@ def test_delete_file_command(
     assert device.state() == DevState.OFF
 
 
-@pytest.mark.forked
-def test_read_file_command_vis(
-    device: DeviceProxy,
-):
+def test_read_file_command_vis(device: DeviceProxy):
     """
     Test case for the ``ReadFile`` command using the ``DataType.VIS`` data type.
     """
-    headers_json, data_bytes = device.ReadFile(DataType.VIS)
+    device.data_type = DataType.VIS
+    headers_json, data_bytes = device.ReadFile()
 
     headers: pd.DataFrame = pd.read_json(io.StringIO(headers_json))
     assert headers.size > 0  # pylint: disable=no-member
@@ -136,10 +139,10 @@ def test_read_file_command_vis(
     assert data.dtype == np.complex64
 
 
-@pytest.mark.forked
-def test_read_file_command_unknown_data_type(device: DeviceProxy):
+def test_read_file_command_no_data_type(device: DeviceProxy):
     """
-    Test case for the ``ReadFile`` command using an unknown data type.
+    Test case for the ``ReadFile`` command when no data type is configured.
     """
+    device.data_type = DataType.NOT_CONFIGURED
     with pytest.raises(DevFailed):
-        device.ReadFile(42)
+        device.ReadFile()

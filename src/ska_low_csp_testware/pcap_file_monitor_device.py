@@ -41,11 +41,15 @@ class PcapFileMonitor(Device):
         default_value=TestMode.NONE,
     )
 
+    files: list[str] = attribute(  # type: ignore
+        max_dim_x=9999,
+    )
+
     def __init__(self, *args, **kwargs):
         self.logger = logging.getLogger(__name__)
+        self._file_names: list[str] = []
         self._stop_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task] = set()
-
         super().__init__(*args, **kwargs)
 
     async def init_device(self) -> None:  # pylint: disable=invalid-overridden-method
@@ -53,13 +57,10 @@ class PcapFileMonitor(Device):
 
         self.set_state(DevState.INIT)
 
-        self._file_names: list[str] = []
-
         for attribute_name in ["files"]:
             self.set_change_event(attribute_name, True, False)
 
-        await self._process_existing_files()
-        self._start_monitoring()
+        await self._start_monitoring()
 
         self.set_state(DevState.ON)
 
@@ -74,7 +75,9 @@ class PcapFileMonitor(Device):
             if _is_monitored_file(file):
                 await self._add_file(file)
 
-    def _start_monitoring(self) -> None:
+    async def _start_monitoring(self) -> None:
+        await self._process_existing_files()
+
         task = asyncio.create_task(self._monitor())
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
@@ -93,10 +96,9 @@ class PcapFileMonitor(Device):
                     case watchfiles.Change.deleted:
                         await self._remove_file(Path(path))
 
-    @attribute(max_dim_x=9999)
-    def files(self) -> list[str]:
+    def read_files(self) -> list[str]:
         """
-        Read method for the ``files`` TANGO attribute.
+        Read method for the ``files`` device attribute.
         """
         return self._file_names
 
