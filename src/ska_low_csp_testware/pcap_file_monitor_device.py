@@ -148,10 +148,11 @@ class PcapFileMonitor(Device):
                 dev_name,
                 cb=functools.partial(self._create_pcap_file_device_properties, file),
             )
-        except Exception:  # pylint: disable=broad-exception-caught
-            self.error_stream("Failed to create device %s", dev_name, exc_info=True)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            self.error_stream("Failed to create device %s: %s", dev_name, e)
 
     def _create_pcap_file_device_properties(self, file: Path, dev_name: str) -> None:
+        self.info_stream("Setting device properties for device %s", dev_name)
         db = Util.instance().get_database()
         db.put_device_property(
             dev_name,
@@ -176,8 +177,8 @@ class PcapFileMonitor(Device):
         self.info_stream("Removing device %s", dev_name)
         try:
             Util.instance().delete_device(PCAP_FILE_DEVICE_CLASS, dev_name)
-        except Exception:  # pylint: disable=broad-exception-caught
-            self.error_stream("Failed to remove device %s", dev_name, exc_info=True)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            self.error_stream("Failed to remove device %s: %s", dev_name, e)
 
     def _is_device_defined(self, dev_name: str) -> bool:
         util = Util.instance()
