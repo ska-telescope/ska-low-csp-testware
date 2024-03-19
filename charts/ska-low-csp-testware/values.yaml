@@ -67,7 +67,7 @@ deviceServers:
     function: testing
     domain: ska-low-csp-testware
     instances: ["1"]
-    command: "pcap_file_monitor"
+    command: "pcap_file_monitor -v4"
     server:
       name: "pcap_file_monitor"
       instances:

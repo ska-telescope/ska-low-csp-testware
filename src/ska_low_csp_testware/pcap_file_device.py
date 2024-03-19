@@ -4,7 +4,6 @@ Module for the ``PcapFile`` TANGO device.
 
 import asyncio
 import io
-import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -14,7 +13,7 @@ import numpy.typing as npt
 import pandas as pd
 import watchfiles
 from ska_control_model import TestMode
-from tango import AttrWriteType, DevState, GreenMode
+from tango import AttrWriteType, DebugIt, DevState, GreenMode
 from tango.server import Device, attribute, command, device_property
 
 from ska_low_csp_testware.common_types import DataType
@@ -25,8 +24,6 @@ __all__ = [
 ]
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
-
-module_logger = logging.getLogger(__name__)
 
 
 def _encode_spead_headers(spead_headers: pd.DataFrame) -> str:
@@ -67,7 +64,7 @@ class PcapFile(Device):
     )
 
     file_modification_timestamp: float = attribute(  # type: ignore
-        label="File modification Unix timestamp",
+        label="File modification timestamp",
         unit="s",
         standard_unit="s",
         display_unit="s",
@@ -78,18 +75,19 @@ class PcapFile(Device):
     )
 
     def __init__(self, *args, **kwargs):
-        self._logger = module_logger
+        self._background_tasks: set[asyncio.Task] = set()
+        self._stop_event = asyncio.Event()
+
         self._file_size = 0
         self._file_modification_datetime = datetime.fromtimestamp(0).strftime(DATETIME_FORMAT)
         self._file_modification_timestamp = 0.0
         self._data_type = DataType.NOT_CONFIGURED
-        self._stop_event = asyncio.Event()
-        self._background_tasks: set[asyncio.Task] = set()
+
         super().__init__(*args, **kwargs)
 
     async def init_device(self) -> None:  # pylint: disable=invalid-overridden-method
         await super().init_device()  # type: ignore
-
+        self.debug_stream("Device init started")
         self.set_state(DevState.INIT)
 
         for attr_name in [
@@ -102,10 +100,14 @@ class PcapFile(Device):
         await self._start_monitoring_file()
 
         self.set_state(DevState.ON)
+        self.debug_stream("Device init completed")
 
     async def delete_device(self) -> None:  # pylint: disable=invalid-overridden-method
+        self.debug_stream("Device deinit started")
         self._stop_event.set()
         await asyncio.gather(*self._background_tasks)
+        self.debug_stream("Device deinit completed")
+
         await super().delete_device()  # type: ignore
 
     async def _start_monitoring_file(self) -> None:
@@ -116,19 +118,25 @@ class PcapFile(Device):
         task.add_done_callback(self._background_tasks.discard)
 
     async def _monitor_file(self) -> None:
+        self.info_stream("Start monitoring file")
         async for changes in watchfiles.awatch(self.pcap_file_path, stop_event=self._stop_event):
             for change, _ in changes:
                 match change:
                     case watchfiles.Change.modified:
+                        self.debug_stream("File modification detected")
                         await self._update_file_attributes()
                     case watchfiles.Change.deleted:
-                        self.set_state(DevState.OFF)
-                        return
+                        self.debug_stream("File deletion detected")
+                        self._stop_event.set()
+
+        self.info_stream("Stop monitoring file")
+        self.set_state(DevState.OFF)
 
     async def _update_file_attributes(self):
+        self.debug_stream("Updating file attributes")
         path = Path(self.pcap_file_path)
         if not path.is_file():
-            self._logger.warning("PCAP file does not exist (yet), skipping file attribute update")
+            self.warn_stream("PCAP file does not exist (yet), skipping file attribute update")
             return
 
         file_info = path.stat()
@@ -166,6 +174,7 @@ class PcapFile(Device):
         """
         return self._data_type
 
+    @DebugIt(show_args=True)
     def write_data_type(self, data_type: DataType) -> None:
         """
         Write method for the ``data_type`` device attribute.
@@ -173,6 +182,7 @@ class PcapFile(Device):
         self._data_type = data_type
 
     @command
+    @DebugIt()
     async def DeleteFile(self) -> None:  # pylint: disable=invalid-name
         """
         Delete the PCAP file on disk.
@@ -183,6 +193,7 @@ class PcapFile(Device):
         dtype_out="DevEncoded",
         doc_out="Tuple containing the result code and corresponding message",
     )
+    @DebugIt()
     async def ReadFile(self) -> tuple[str, bytes]:  # pylint: disable=invalid-name
         """
         Read the SPEAD headers and SPEAD data contained in the PCAP file.

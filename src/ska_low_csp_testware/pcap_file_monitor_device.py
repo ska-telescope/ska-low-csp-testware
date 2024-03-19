@@ -1,10 +1,9 @@
 """
-Module for the ``PcapFileWatcher`` TANGO device.
+Module for the ``PcapFileMonitor`` TANGO device.
 """
 
 import asyncio
 import functools
-import logging
 from pathlib import Path
 
 import watchfiles
@@ -15,8 +14,6 @@ from tango.server import Device, attribute, device_property
 __all__ = ["PcapFileMonitor"]
 
 PCAP_FILE_DEVICE_CLASS = "PcapFile"
-
-module_logger = logging.getLogger(__name__)
 
 
 def _is_monitored_file(path: Path):
@@ -48,7 +45,6 @@ class PcapFileMonitor(Device):
     )
 
     def __init__(self, *args, **kwargs):
-        self._logger = module_logger
         self._file_names: list[str] = []
         self._stop_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task] = set()
@@ -56,6 +52,7 @@ class PcapFileMonitor(Device):
 
     async def init_device(self) -> None:  # pylint: disable=invalid-overridden-method
         await super().init_device()  # type: ignore
+        self.debug_stream("Device init started")
 
         self.set_state(DevState.INIT)
 
@@ -65,10 +62,14 @@ class PcapFileMonitor(Device):
         await self._start_monitoring()
 
         self.set_state(DevState.ON)
+        self.debug_stream("Device init completed")
 
     async def delete_device(self) -> None:  # pylint: disable=invalid-overridden-method
+        self.debug_stream("Device deinit started")
         self._stop_event.set()
         await asyncio.gather(*self._background_tasks)
+        self.debug_stream("Device deinit completed")
+
         await super().delete_device()  # type: ignore
 
     async def _process_existing_files(self) -> None:
@@ -85,6 +86,7 @@ class PcapFileMonitor(Device):
         task.add_done_callback(self._background_tasks.discard)
 
     async def _monitor(self) -> None:
+        self.info_stream("Start monitoring files")
         async for changes in watchfiles.awatch(
             self.pcap_dir,
             watch_filter=_monitor_filter,
@@ -92,11 +94,15 @@ class PcapFileMonitor(Device):
             stop_event=self._stop_event,
         ):
             for change, path in changes:
+                self.debug_stream("File %s was %s", path, change)
                 match change:
                     case watchfiles.Change.added:
                         await self._add_file(Path(path))
                     case watchfiles.Change.deleted:
                         await self._remove_file(Path(path))
+
+        self.info_stream("Stop monitoring files")
+        self.set_state(DevState.OFF)
 
     def read_files(self) -> list[str]:
         """
@@ -106,6 +112,7 @@ class PcapFileMonitor(Device):
 
     async def _add_file(self, file: Path) -> None:
         file_name = str(file.relative_to(self.pcap_dir))
+        self.info_stream("Adding file %s", file_name)
 
         if file_name not in self._file_names:
             self._file_names.append(file_name)
@@ -115,6 +122,7 @@ class PcapFileMonitor(Device):
 
     async def _remove_file(self, file: Path) -> None:
         file_name = str(file.relative_to(self.pcap_dir))
+        self.info_stream("Removing file %s", file_name)
 
         if file_name in self._file_names:
             self._file_names.remove(file_name)
@@ -124,16 +132,16 @@ class PcapFileMonitor(Device):
 
     def _create_pcap_file_device(self, file: Path) -> None:
         if self.test_mode == TestMode.TEST:
-            self._logger.info("Test mode enabled, skipping device creation")
+            self.info_stream("Test mode enabled, skipping device creation")
             return
 
         dev_name = self._get_dev_name(file)
 
         if self._is_device_defined(dev_name):
-            self._logger.info("Device %s already exists, skipping device creation", dev_name)
+            self.info_stream("Device %s already exists, skipping device creation", dev_name)
             return
 
-        self._logger.info("Creating device %s", dev_name)
+        self.info_stream("Creating device %s", dev_name)
 
         try:
             Util.instance().create_device(
@@ -142,7 +150,7 @@ class PcapFileMonitor(Device):
                 cb=functools.partial(self._create_pcap_file_device_properties, file),
             )
         except Exception:  # pylint: disable=broad-exception-caught
-            self._logger.error("Failed to create device %s", dev_name, exc_info=True)
+            self.error_stream("Failed to create device %s", dev_name, exc_info=True)
 
     def _create_pcap_file_device_properties(self, file: Path, dev_name: str) -> None:
         db = Util.instance().get_database()
@@ -150,20 +158,20 @@ class PcapFileMonitor(Device):
 
     def _remove_pcap_file_device(self, file: Path) -> None:
         if self.test_mode == TestMode.TEST:
-            self._logger.info("Test mode enabled, skipping device removal")
+            self.info_stream("Test mode enabled, skipping device removal")
             return
 
         dev_name = self._get_dev_name(file)
 
         if not self._is_device_defined(dev_name):
-            self._logger.info("Device %s does not exist, no need to remove", dev_name)
+            self.info_stream("Device %s does not exist, no need to remove", dev_name)
             return
 
-        self._logger.info("Removing device %s", dev_name)
+        self.info_stream("Removing device %s", dev_name)
         try:
             Util.instance().delete_device(PCAP_FILE_DEVICE_CLASS, dev_name)
         except Exception:  # pylint: disable=broad-exception-caught
-            self._logger.error("Failed to remove device %s", dev_name, exc_info=True)
+            self.error_stream("Failed to remove device %s", dev_name, exc_info=True)
 
     def _is_device_defined(self, dev_name: str) -> bool:
         util = Util.instance()
