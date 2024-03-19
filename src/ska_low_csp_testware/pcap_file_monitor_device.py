@@ -153,7 +153,14 @@ class PcapFileMonitor(Device):
 
     def _create_pcap_file_device_properties(self, file: Path, dev_name: str) -> None:
         db = Util.instance().get_database()
-        db.put_device_property(dev_name, {"pcap_file_path": [file.absolute()]})
+        db.put_device_property(
+            dev_name,
+            {
+                "pcap_file_path": [file.absolute()],
+                "logging_level": ["INFO"],
+                "logging_target": ["console"],
+            },
+        )
 
     def _remove_pcap_file_device(self, file: Path) -> None:
         if self.test_mode == TestMode.TEST:

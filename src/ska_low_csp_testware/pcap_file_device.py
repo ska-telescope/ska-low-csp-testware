@@ -13,7 +13,7 @@ import numpy.typing as npt
 import pandas as pd
 import watchfiles
 from ska_control_model import TestMode
-from tango import AttrWriteType, DebugIt, DevState, GreenMode
+from tango import AttrWriteType, DevState, GreenMode
 from tango.server import Device, attribute, command, device_property
 
 from ska_low_csp_testware.common_types import DataType
@@ -174,15 +174,14 @@ class PcapFile(Device):
         """
         return self._data_type
 
-    @DebugIt(show_args=True)
     def write_data_type(self, data_type: DataType) -> None:
         """
         Write method for the ``data_type`` device attribute.
         """
         self._data_type = data_type
+        self.info_stream("Data type changed to %s", data_type.name)
 
     @command
-    @DebugIt()
     async def DeleteFile(self) -> None:  # pylint: disable=invalid-name
         """
         Delete the PCAP file on disk.
@@ -193,7 +192,6 @@ class PcapFile(Device):
         dtype_out="DevEncoded",
         doc_out="Tuple containing the result code and corresponding message",
     )
-    @DebugIt()
     async def ReadFile(self) -> tuple[str, bytes]:  # pylint: disable=invalid-name
         """
         Read the SPEAD headers and SPEAD data contained in the PCAP file.
