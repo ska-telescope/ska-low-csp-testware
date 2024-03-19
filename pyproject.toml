@@ -24,13 +24,12 @@ asyncio = "^3.4.3"
 spead2 = "^4.3.1"
 pandas = "^2.2.1"
 ska-control-model = "^0.3.4"
-ska-tango-base = "^0.20.1"
 typing-extensions = "^4.10.0"
+watchfiles = "^0.21.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.1.1"
 pytest-cov = "^4.1.0"
-pytest-timeout = "^2.3.1"
 ska-tango-testing = "^0.6.1"
 pytest-forked = "^1.6.0"
 

@@ -31,6 +31,5 @@ class PcapFileContents:
     The contents of the PCAP file.
     """
 
-    spead_heap_count: int
     spead_headers: pd.DataFrame
     spead_data: npt.NDArray

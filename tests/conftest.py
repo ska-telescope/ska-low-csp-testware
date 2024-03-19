@@ -5,7 +5,6 @@ Module containing shared pytest fixtures.
 import logging
 
 import pytest
-from ska_tango_testing.mock import MockCallableGroup
 
 
 @pytest.hookimpl
@@ -32,14 +31,3 @@ def fxt_logger():
     Fixture that returns a ``logging.Logger`` instance.
     """
     return logging.getLogger("ska_low_csp_testware")
-
-
-@pytest.fixture(name="callbacks")
-def fxt_callbacks():
-    """
-    Fixture that returns a :py:class:`MockCallableGroup` used to capture state callbacks.
-    """
-    return MockCallableGroup(
-        "communication_state",
-        "component_state",
-    )

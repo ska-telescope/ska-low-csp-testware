@@ -2,159 +2,127 @@
 Module for the ``PcapFileWatcher`` TANGO device.
 """
 
+import asyncio
 import functools
 import logging
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
 
-from ska_control_model import PowerState, TaskStatus
-from ska_tango_base.base import CommunicationStatusCallbackType, SKABaseDevice, TaskCallbackType
-from ska_tango_base.poller import PollingComponentManager
-from tango import Util
-from tango.server import attribute, device_property
+import watchfiles
+from ska_control_model import TestMode
+from tango import DevState, GreenMode, Util
+from tango.server import Device, attribute, device_property
 
 __all__ = ["PcapFileMonitor"]
 
 PCAP_FILE_DEVICE_CLASS = "PcapFile"
 
 
-@dataclass
-class _PollRequest:
-    pass
+def _is_monitored_file(path: Path):
+    return path.suffix == ".pcap"
 
 
-@dataclass
-class _PollResponse:
-    files: list[Path]
+def _monitor_filter(change: watchfiles.Change, path: str):  # pylint: disable=unused-argument
+    return _is_monitored_file(Path(path))
 
 
-class PcapFileMonitorComponentManager(PollingComponentManager[_PollRequest, _PollResponse]):
-    """
-    Component manager to monitor a specified directory for PCAP files.
-
-    This component manager periodically polls and exposes the contents of the provided ``pcap_dir``.
-    """
-
-    def __init__(  # pylint: disable=too-many-arguments
-        self,
-        pcap_dir: Path,
-        logger: logging.Logger,
-        communication_state_callback: CommunicationStatusCallbackType,
-        component_state_callback: Callable[..., None],
-        poll_rate: float = 5.0,
-        **state: Any,
-    ) -> None:
-        self._pcap_dir = pcap_dir
-        super().__init__(
-            logger=logger,
-            communication_state_callback=communication_state_callback,
-            component_state_callback=component_state_callback,
-            poll_rate=poll_rate,
-            **state,
-        )
-
-    def on(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        return TaskStatus.REJECTED, "Command not supported"
-
-    def standby(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        return TaskStatus.REJECTED, "Command not supported"
-
-    def off(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        return TaskStatus.REJECTED, "Command not supported"
-
-    def reset(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        return TaskStatus.REJECTED, "Command not supported"
-
-    def abort_commands(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        return TaskStatus.REJECTED, "Command not supported"
-
-    def get_request(self) -> _PollRequest:
-        return _PollRequest()
-
-    def poll(self, poll_request: _PollRequest) -> _PollResponse:
-        files = []
-        for file in self._pcap_dir.glob("*.pcap"):
-            if file.is_file():
-                files.append(file)
-
-        return _PollResponse(
-            files=files,
-        )
-
-    def polling_started(self) -> None:
-        super().polling_started()
-        self._update_component_state(
-            power=PowerState.ON,
-            fault=False,
-        )
-
-    def poll_succeeded(self, poll_response: _PollResponse) -> None:
-        super().poll_succeeded(poll_response)
-        self._update_component_state(
-            files=poll_response.files,
-        )
-
-
-class PcapFileMonitor(SKABaseDevice[PcapFileMonitorComponentManager]):
+class PcapFileMonitor(Device):
     """
     TANGO device that monitors a directory for PCAP files and spawns :py:class:`PcapFile`` devices to represent them.
     """
 
+    green_mode = GreenMode.Asyncio
+
     pcap_dir: str = device_property(  # type: ignore
-        doc="Absolute path on disk that points to a directory containing PCAP files"
+        doc="Absolute path on disk that points to a directory containing PCAP files",
+        mandatory=True,
+    )
+
+    test_mode: int = device_property(  # type: ignore
+        default_value=TestMode.NONE,
     )
 
     def __init__(self, *args, **kwargs):
-        self._files: list[Path] = []
+        self.logger = logging.getLogger(__name__)
+        self._stop_event = asyncio.Event()
+        self._background_tasks: set[asyncio.Task] = set()
+
         super().__init__(*args, **kwargs)
 
-    def create_component_manager(self) -> PcapFileMonitorComponentManager:
-        return PcapFileMonitorComponentManager(
-            pcap_dir=Path(self.pcap_dir),
-            logger=self.logger,
-            communication_state_callback=self._communication_state_changed,
-            component_state_callback=self._component_state_changed,
-            files=self._files,
-        )
+    async def init_device(self) -> None:  # pylint: disable=invalid-overridden-method
+        await super().init_device()  # type: ignore
 
-    @attribute(label="PCAP file names", max_dim_x=9999)
+        self.set_state(DevState.INIT)
+
+        self._file_names: list[str] = []
+
+        for attribute_name in ["files"]:
+            self.set_change_event(attribute_name, True, False)
+
+        await self._process_existing_files()
+        self._start_monitoring()
+
+        self.set_state(DevState.ON)
+
+    async def delete_device(self) -> None:  # pylint: disable=invalid-overridden-method
+        self._stop_event.set()
+        await asyncio.gather(*self._background_tasks)
+        await super().delete_device()  # type: ignore
+
+    async def _process_existing_files(self) -> None:
+        path = Path(self.pcap_dir)
+        for file in path.iterdir():
+            if _is_monitored_file(file):
+                await self._add_file(file)
+
+    def _start_monitoring(self) -> None:
+        task = asyncio.create_task(self._monitor())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _monitor(self) -> None:
+        async for changes in watchfiles.awatch(
+            self.pcap_dir,
+            watch_filter=_monitor_filter,
+            recursive=False,
+            stop_event=self._stop_event,
+        ):
+            for change, path in changes:
+                match change:
+                    case watchfiles.Change.added:
+                        await self._add_file(Path(path))
+                    case watchfiles.Change.deleted:
+                        await self._remove_file(Path(path))
+
+    @attribute(max_dim_x=9999)
     def files(self) -> list[str]:
         """
-        TANGO attribute that exposes the current PCAP files contained in the configured directory.
-
-        :returns: List of file names local to the directory.
+        Read method for the ``files`` TANGO attribute.
         """
-        return [str(file.relative_to(self.pcap_dir)) for file in self._files]
+        return self._file_names
 
-    def _component_state_changed(
-        self,
-        fault: bool | None = None,
-        power: PowerState | None = None,
-        files: list[Path] | None = None,
-    ) -> None:
-        super()._component_state_changed(fault, power)
+    async def _add_file(self, file: Path) -> None:
+        file_name = str(file.relative_to(self.pcap_dir))
 
-        if files is not None:
-            self._process_file_changes(files)
-            self._update_files(files)
+        if file_name not in self._file_names:
+            self._file_names.append(file_name)
+            self.push_change_event("files", self._file_names)
 
-    def _process_file_changes(self, files: list[Path]) -> None:
-        added = [file for file in files if file not in self._files]
-        removed = [file for file in self._files if file not in files]
+        self._create_pcap_file_device(file)
 
-        for file in added:
-            self._create_pcap_file_device(file)
+    async def _remove_file(self, file: Path) -> None:
+        file_name = str(file.relative_to(self.pcap_dir))
 
-        for file in removed:
-            self._delete_pcap_file_device(file)
+        if file_name in self._file_names:
+            self._file_names.remove(file_name)
+            self.push_change_event("files", self._file_names)
 
-    def _update_files(self, files: list[Path]) -> None:
-        self._files = files
-        self.push_change_event("files", files)
-        self.push_archive_event("files", files)
+        self._remove_pcap_file_device(file)
 
     def _create_pcap_file_device(self, file: Path) -> None:
+        if self.test_mode == TestMode.TEST:
+            self.logger.info("Test mode enabled, skipping device creation")
+            return
+
         dev_name = self._get_dev_name(file)
 
         if self._is_device_defined(dev_name):
@@ -176,7 +144,11 @@ class PcapFileMonitor(SKABaseDevice[PcapFileMonitorComponentManager]):
         db = Util.instance().get_database()
         db.put_device_property(dev_name, {"pcap_file_path": [file.absolute()]})
 
-    def _delete_pcap_file_device(self, file: Path) -> None:
+    def _remove_pcap_file_device(self, file: Path) -> None:
+        if self.test_mode == TestMode.TEST:
+            self.logger.info("Test mode enabled, skipping device removal")
+            return
+
         dev_name = self._get_dev_name(file)
 
         if not self._is_device_defined(dev_name):

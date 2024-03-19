@@ -2,248 +2,87 @@
 Module for the ``PcapFile`` TANGO device.
 """
 
+import asyncio
 import io
-import logging
 import os
-from dataclasses import dataclass
-from logging import Logger
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from ska_control_model import PowerState, ResultCode, TaskStatus
-from ska_tango_base.base import CommunicationStatusCallbackType, SKABaseDevice, TaskCallbackType
-from ska_tango_base.commands import DeviceInitCommand, FastCommand, SubmittedSlowCommand
-from ska_tango_base.executor import TaskExecutor
-from ska_tango_base.poller import PollingComponentManager
-from tango.server import attribute, command, device_property
+import watchfiles
+from ska_control_model import TestMode
+from tango import DevState, GreenMode
+from tango.server import Device, attribute, command, device_property
 
-from ska_low_csp_testware.common_types import DataType, PcapFileContents
-from ska_low_csp_testware.low_cbf_vis import ReadLowCbfVisibilitiesTask
+from ska_low_csp_testware.common_types import DataType
+from ska_low_csp_testware.low_cbf_vis import read_visibilities
 
 __all__ = [
     "PcapFile",
-    "PcapFileComponentManager",
 ]
 
 
-@dataclass
-class _PollRequest:
-    pass
-
-
-@dataclass
-class _PollResponse:
-    file_info: os.stat_result
-
-
-class PcapFileComponentManager(PollingComponentManager[_PollRequest, _PollResponse]):
-    """
-    Component manager to interact with the PCAP file.
-
-    This component manager periodically polls the file information and exposes it as component state.
-    It also exposes methods to read the PCAP file contents.
-    """
-
-    def __init__(  # pylint: disable=too-many-arguments
-        self,
-        pcap_file_path: Path,
-        logger: logging.Logger,
-        communication_state_callback: CommunicationStatusCallbackType,
-        component_state_callback: Callable[..., None],
-        poll_rate: float = 1.0,
-        max_queue_size: int = 32,
-        max_workers: int | None = 1,
-        **state: Any,
-    ) -> None:
-        self._pcap_file_path = pcap_file_path
-        self._max_queue_size = max_queue_size
-        self._task_executor = TaskExecutor(max_workers)
-        super().__init__(
-            logger=logger,
-            communication_state_callback=communication_state_callback,
-            component_state_callback=component_state_callback,
-            poll_rate=poll_rate,
-            **state,
-        )
-
-    def get_request(self) -> _PollRequest:
-        return _PollRequest()
-
-    def poll(self, poll_request: _PollRequest) -> _PollResponse:
-        return _PollResponse(
-            file_info=self._pcap_file_path.stat(),
-        )
-
-    def polling_started(self) -> None:
-        super().polling_started()
-        self._update_component_state(
-            power=PowerState.ON,
-            fault=False,
-        )
-
-    def poll_succeeded(self, poll_response: _PollResponse) -> None:
-        super().poll_succeeded(poll_response)
-        self._update_component_state(
-            file_size=poll_response.file_info.st_size,
-            file_time_modified=poll_response.file_info.st_mtime_ns,
-        )
-
-    def on(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        return TaskStatus.REJECTED, "Command not supported"
-
-    def standby(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        return TaskStatus.REJECTED, "Command not supported"
-
-    def off(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        return TaskStatus.REJECTED, "Command not supported"
-
-    def reset(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        return TaskStatus.REJECTED, "Command not supported"
-
-    def abort_commands(self, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        if task_callback:
-            task_callback(status=TaskStatus.IN_PROGRESS)
-        return self._task_executor.abort(task_callback)
-
-    def delete_file(self) -> None:
-        """
-        Delete the PCAP file on disk.
-
-        After the file is removed, the component manager automatically stops polling the file information.
-        """
-        self.stop_communicating()
-        file_path = self._pcap_file_path
-        self.logger.info("Deleting file %s", file_path)
-        try:
-            file_path.unlink()
-        except Exception:
-            self.logger.error("Failed to delete file %s", file_path, exc_info=True)
-            self.start_communicating()
-            raise
-
-    def load_file(self, data_type: DataType, task_callback: TaskCallbackType | None = None) -> tuple[TaskStatus, str]:
-        """
-        Load the PCAP file contents into memory.
-
-        When called, the file is read in a background task on a separate thread.
-        The supplied ``task_callback`` is invoked as the task progresses and when it finishes.
-
-        :param data_type: The type of data contained in the PCAP file.
-        :param task_callback: An optional callback that is invoked with task status updates.
-        :returns: The initial task status and message after submitting the task.
-        """
-        match data_type:
-            case DataType.VIS:
-                task = ReadLowCbfVisibilitiesTask(
-                    pcap_file_path=self._pcap_file_path,
-                    result_callback=lambda contents: self._update_component_state(file_contents=contents),
-                    logger=self.logger,
-                )
-            case _:
-                return TaskStatus.REJECTED, "Unsupported data type"
-
-        return self._submit_task(task, task_callback=task_callback)
-
-    def _submit_task(  # pylint: disable=too-many-arguments
-        self,
-        func: Callable[..., None],
-        args: Any = None,
-        kwargs: Any = None,
-        is_cmd_allowed: Callable[[], bool] | None = None,
-        task_callback: TaskCallbackType | None = None,
-    ) -> tuple[TaskStatus, str]:
-        input_queue_size = self._task_executor.get_input_queue_size()
-        if input_queue_size < self._max_queue_size:
-            return self._task_executor.submit(func, args, kwargs, is_cmd_allowed, task_callback=task_callback)
-
-        return (
-            TaskStatus.REJECTED,
-            f"Input queue supports a maximum of {self._max_queue_size} commands",
-        )
-
-
-class PcapFile(SKABaseDevice[PcapFileComponentManager]):
+class PcapFile(Device):
     """
     TANGO device representing a PCAP file.
     """
 
-    pcap_file_path: str = device_property(doc="Absolute path on disk that points to a valid PCAP file")  # type: ignore
+    green_mode = GreenMode.Asyncio
+
+    pcap_file_path: str = device_property(  # type: ignore
+        doc="Absolute path on disk that points to a valid PCAP file",
+    )
+
+    test_mode: int = device_property(  # type: ignore
+        default_value=TestMode.NONE,
+    )
 
     def __init__(self, *args, **kwargs):
-        self._file_contents: PcapFileContents | None = None
         self._file_size = 0
         self._file_time_modified = 0
+        self._stop_event = asyncio.Event()
+        self._background_tasks: set[asyncio.Task] = set()
         super().__init__(*args, **kwargs)
 
-    def create_component_manager(self) -> PcapFileComponentManager:
-        return PcapFileComponentManager(
-            pcap_file_path=Path(self.pcap_file_path),
-            logger=self.logger,
-            communication_state_callback=self._communication_state_changed,
-            component_state_callback=self._component_state_changed,
-            file_contents=self._file_contents,
-            file_time_modified=self._file_time_modified,
-            file_size=self._file_size,
-        )
+    async def init_device(self) -> None:  # pylint: disable=invalid-overridden-method
+        await super().init_device()  # type: ignore
+        self.set_state(DevState.INIT)
+        for attr_name in [
+            "file_size",
+            "file_time_modified",
+        ]:
+            self.set_change_event(attr_name, True, False)
+        await self._update_file_attributes()
+        watch_task = asyncio.create_task(self._watch_file())
+        self._background_tasks.add(watch_task)
+        watch_task.add_done_callback(self._background_tasks.discard)
+        self.set_state(DevState.ON)
 
-    class InitCommand(DeviceInitCommand):
-        """
-        Class for the TANGO device's ``Init()`` command.
-        """
+    async def delete_device(self) -> None:  # pylint: disable=invalid-overridden-method
+        self._stop_event.set()
+        await asyncio.gather(*self._background_tasks)
+        await super().delete_device()  # type: ignore
 
-        def do(self, *args: Any, **kwargs: Any) -> tuple[ResultCode, str]:
-            for attr_name in [
-                "file_size",
-                "file_time_modified",
-                "spead_heap_count",
-                "spead_headers",
-                "spead_data",
-            ]:
-                self._device.set_change_event(attr_name, True, False)
+    async def _watch_file(self) -> None:
+        async for changes in watchfiles.awatch(self.pcap_file_path, stop_event=self._stop_event):
+            for change, _ in changes:
+                match change:
+                    case watchfiles.Change.modified:
+                        await self._update_file_attributes()
+                    case watchfiles.Change.deleted:
+                        self.set_state(DevState.OFF)
+                        return
 
-            return ResultCode.OK, "Init completed"
+    async def _update_file_attributes(self):
+        file_info = os.stat(self.pcap_file_path)
+        self._update_attribute("file_size", file_info.st_size)
+        self._update_attribute("file_time_modified", file_info.st_mtime_ns)
 
-    class DeleteFileCommand(FastCommand[None]):
-        """
-        Class for the TANGO device's ``DeleteFile()`` command.
-        """
-
-        def __init__(
-            self,
-            component_manager: PcapFileComponentManager,
-            logger: Logger | None = None,
-        ) -> None:
-            self._component_manager = component_manager
-            super().__init__(logger)
-
-        def do(self, *args: Any, **kwargs: Any) -> None:
-            self._component_manager.delete_file()
-
-    def init_command_objects(self) -> None:
-        super().init_command_objects()
-
-        self.register_command_object(
-            "DeleteFile",
-            self.DeleteFileCommand(
-                self.component_manager,
-                self.logger,
-            ),
-        )
-
-        self.register_command_object(
-            "LoadFile",
-            SubmittedSlowCommand(
-                "LoadFile",
-                self._command_tracker,
-                self.component_manager,
-                "load_file",
-                callback=None,
-                logger=self.logger,
-            ),
-        )
+    def _update_attribute(self, attr_name: str, attr_value: Any) -> None:
+        setattr(self, f"_{attr_name}", attr_value)
+        self.push_change_event(attr_name, attr_value)
 
     @attribute(
         label="File size",
@@ -273,70 +112,34 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         """
         return self._file_time_modified
 
-    @attribute(label="SPEAD heap count")
-    def spead_heap_count(self) -> int:
-        """
-        The number of SPEAD heaps in the PCAP file.
-
-        :returns: The heap count.
-        :raises ValueError: When the file contents are not loaded into memory.
-        """
-        if self._file_contents:
-            return self._file_contents.spead_heap_count
-
-        raise ValueError("File contents not loaded")
-
-    @attribute(label="SPEAD headers")
-    def spead_headers(self) -> str:
-        """
-        The SPEAD header contents of the PCAP file.
-
-        :returns: A ``pandas.DataFrame`` encoded as JSON.
-        :raises ValueError: When the file contents are not loaded into memory.
-        """
-        if self._file_contents:
-            return self._encode_spead_headers(self._file_contents.spead_headers)
-
-        raise ValueError("File contents not loaded")
-
-    @attribute(label="SPEAD data", dtype="DevEncoded")
-    def spead_data(self) -> tuple[str, bytes]:
-        """
-        The SPEAD data contents of the PCAP file.
-
-        :returns: A ``numpy.NDArray`` encoded using ``numpy.save``.
-        :raises ValueError: When the file contents are not loaded into memory.
-        """
-        if self._file_contents:
-            return "numpy.NDArray", self._encode_spead_data(self._file_contents.spead_data)
-
-        raise ValueError("File contents not loaded")
-
     @command
-    def DeleteFile(self) -> None:  # pylint: disable=invalid-name
+    async def DeleteFile(self) -> None:  # pylint: disable=invalid-name
         """
         Delete the PCAP file on disk.
         """
-        handler = self.get_command_object("DeleteFile")
-        handler()
+        Path(self.pcap_file_path).unlink()
 
     @command(
         doc_in="The type of data contained in the PCAP file",
-        dtype_out="DevVarLongStringArray",
+        dtype_out="DevEncoded",
         doc_out="Tuple containing the result code and corresponding message",
     )
-    def LoadFile(self, data_type: DataType) -> tuple[list[ResultCode], list[str]]:  # pylint: disable=invalid-name
+    async def ReadFile(self, data_type: DataType) -> tuple[str, bytes]:  # pylint: disable=invalid-name
         """
-        Load the PCAP file contents into memory asynchronously.
+        Read the file contents.
 
-        This command is implemented as a long-running command.
-        For more information, refer to :doc:`ska-tango-base:guide/long_running_command`.
+        This reads the SPEAD headers and SPEAD data contained in the PCAP file.
 
-        :returns: Tuple containing the initial command result code and message.
+        :param data_type: The type of data contained in the PCAP file.
+        :returns: A tuple containing the SPEAD headers and SPEAD data.
         """
-        handler = self.get_command_object("LoadFile")
-        result, message = handler(data_type)
-        return [result], [message]
+        match data_type:
+            case DataType.VIS:
+                file_contents = await read_visibilities(Path(self.pcap_file_path), TestMode(self.test_mode))
+            case _:
+                raise ValueError("Unsupported data type")
+
+        return self._encode_spead_headers(file_contents.spead_headers), self._encode_spead_data(file_contents.spead_data)
 
     def _encode_spead_headers(self, spead_headers: pd.DataFrame) -> str:
         return spead_headers.to_json()
@@ -345,27 +148,3 @@ class PcapFile(SKABaseDevice[PcapFileComponentManager]):
         buffer = io.BytesIO()
         np.save(buffer, spead_data)
         return buffer.getvalue()
-
-    def _component_state_changed(  # pylint: disable=too-many-arguments
-        self,
-        fault: bool | None = None,
-        power: PowerState | None = None,
-        file_contents: PcapFileContents | None = None,
-        file_size: int | None = None,
-        file_time_modified: int | None = None,
-    ) -> None:
-        super()._component_state_changed(fault, power)
-
-        if file_contents:
-            self._file_contents = file_contents
-            self.push_change_event("spead_heap_count", file_contents.spead_heap_count)
-            self.push_change_event("spead_headers", self._encode_spead_headers(file_contents.spead_headers))
-            self.push_change_event("spead_data", self._encode_spead_data(file_contents.spead_data))
-
-        if file_size is not None:
-            self._file_size = file_size
-            self.push_change_event("file_size", file_size)
-
-        if file_time_modified is not None:
-            self._file_time_modified = file_time_modified
-            self.push_change_event("file_time_modified", file_time_modified)
