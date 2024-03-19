@@ -62,22 +62,22 @@ resources:
     memory: 16Gi
 
 deviceServers:
-  pcap-file-monitor:
-    name: "pcap-file-monitor-{{.Release.Name}}"
+  pcap-reader:
+    name: "pcap-reader-{{.Release.Name}}"
     function: testing
     domain: ska-low-csp-testware
     instances: ["1"]
-    command: "pcap_file_monitor"
+    command: pcap_reader
     server:
-      name: "pcap_file_monitor"
+      name: pcap_reader
       instances:
         - name: "1"
           classes:
-            - name: PcapFileMonitor
+            - name: PcapReader
               devices:
-                - name: "test/pcap-file-monitor/0"
+                - name: "low-csp/testware/pcap-reader/1"
                   properties:
-                    - name: "pcap_dir"
+                    - name: pcap_dir
                       values:
                         - "/pcap"
                     - name: logging_level
@@ -86,8 +86,6 @@ deviceServers:
                     - name: logging_target
                       values:
                         - console
-            - name: PcapFile
-              devices: []
     depends_on:
       - device: sys/database/2
     image:

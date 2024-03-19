@@ -16,6 +16,7 @@ releases:
     namespace: '{{.Namespace | default "ska-low-csp-testware"}}'
     chart: skatelescope/ska-tango-base
     version: 0.4.9
+    condition: ska-tango-base.enabled
     values:
       - values.yaml.gotmpl
 

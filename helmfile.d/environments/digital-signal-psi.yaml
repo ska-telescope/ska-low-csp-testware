@@ -2,17 +2,20 @@ global:
   minikube: false
 
 taranta:
-  enabled: true
+  enabled: false
+
+ska-tango-base:
+  enabled: false
 
 ska-low-csp-testware:
   deviceServers:
-    pcap-file-monitor:
+    pcap-reader:
       nodeSelector:
         kubernetes.io/hostname: clp-k8s-fpga-worker-1
       extraVolumes:
         - name: pcap-files
           hostPath:
-            path: /mnt/ssd/pcap/output
+            path: /mnt/ssd
             type: Directory
       extraVolumeMounts:
         - mountPath: /pcap

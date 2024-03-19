@@ -8,6 +8,7 @@ readme = "README.md"
 
 [tool.poetry.scripts]
 pcap_file_monitor = 'ska_low_csp_testware.pcap_file_monitor:main'
+pcap_reader = 'ska_low_csp_testware.pcap_reader_device:main'
 
 [[tool.poetry.source]]
 name = "default"
