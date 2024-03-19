@@ -107,6 +107,7 @@ class PcapReader(Device):
         async for changes in watchfiles.awatch(
             self.pcap_dir,
             watch_filter=_monitor_filter,
+            ignore_permission_denied=True,
             stop_event=self._stop_event,
         ):
             for change, path in changes:
