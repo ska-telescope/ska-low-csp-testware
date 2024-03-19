@@ -16,6 +16,8 @@ __all__ = ["PcapFileMonitor"]
 
 PCAP_FILE_DEVICE_CLASS = "PcapFile"
 
+module_logger = logging.getLogger(__name__)
+
 
 def _is_monitored_file(path: Path):
     return path.suffix == ".pcap"
@@ -46,7 +48,7 @@ class PcapFileMonitor(Device):
     )
 
     def __init__(self, *args, **kwargs):
-        self.logger = logging.getLogger(__name__)
+        self._logger = module_logger
         self._file_names: list[str] = []
         self._stop_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task] = set()
@@ -122,16 +124,16 @@ class PcapFileMonitor(Device):
 
     def _create_pcap_file_device(self, file: Path) -> None:
         if self.test_mode == TestMode.TEST:
-            self.logger.info("Test mode enabled, skipping device creation")
+            self._logger.info("Test mode enabled, skipping device creation")
             return
 
         dev_name = self._get_dev_name(file)
 
         if self._is_device_defined(dev_name):
-            self.logger.info("Device %s already exists, skipping device creation", dev_name)
+            self._logger.info("Device %s already exists, skipping device creation", dev_name)
             return
 
-        self.logger.info("Creating device %s", dev_name)
+        self._logger.info("Creating device %s", dev_name)
 
         try:
             Util.instance().create_device(
@@ -140,7 +142,7 @@ class PcapFileMonitor(Device):
                 cb=functools.partial(self._create_pcap_file_device_properties, file),
             )
         except Exception:  # pylint: disable=broad-exception-caught
-            self.logger.error("Failed to create device %s", dev_name, exc_info=True)
+            self._logger.error("Failed to create device %s", dev_name, exc_info=True)
 
     def _create_pcap_file_device_properties(self, file: Path, dev_name: str) -> None:
         db = Util.instance().get_database()
@@ -148,20 +150,20 @@ class PcapFileMonitor(Device):
 
     def _remove_pcap_file_device(self, file: Path) -> None:
         if self.test_mode == TestMode.TEST:
-            self.logger.info("Test mode enabled, skipping device removal")
+            self._logger.info("Test mode enabled, skipping device removal")
             return
 
         dev_name = self._get_dev_name(file)
 
         if not self._is_device_defined(dev_name):
-            self.logger.info("Device %s does not exist, no need to remove", dev_name)
+            self._logger.info("Device %s does not exist, no need to remove", dev_name)
             return
 
-        self.logger.info("Removing device %s", dev_name)
+        self._logger.info("Removing device %s", dev_name)
         try:
             Util.instance().delete_device(PCAP_FILE_DEVICE_CLASS, dev_name)
         except Exception:  # pylint: disable=broad-exception-caught
-            self.logger.error("Failed to remove device %s", dev_name, exc_info=True)
+            self._logger.error("Failed to remove device %s", dev_name, exc_info=True)
 
     def _is_device_defined(self, dev_name: str) -> bool:
         util = Util.instance()

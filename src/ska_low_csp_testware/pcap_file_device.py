@@ -4,7 +4,7 @@ Module for the ``PcapFile`` TANGO device.
 
 import asyncio
 import io
-import os
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -25,6 +25,8 @@ __all__ = [
 ]
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
+
+module_logger = logging.getLogger(__name__)
 
 
 def _encode_spead_headers(spead_headers: pd.DataFrame) -> str:
@@ -76,6 +78,7 @@ class PcapFile(Device):
     )
 
     def __init__(self, *args, **kwargs):
+        self._logger = module_logger
         self._file_size = 0
         self._file_modification_datetime = datetime.fromtimestamp(0).strftime(DATETIME_FORMAT)
         self._file_modification_timestamp = 0.0
@@ -123,7 +126,12 @@ class PcapFile(Device):
                         return
 
     async def _update_file_attributes(self):
-        file_info = os.stat(self.pcap_file_path)
+        path = Path(self.pcap_file_path)
+        if not path.is_file():
+            self._logger.warning("PCAP file does not exist (yet), skipping file attribute update")
+            return
+
+        file_info = path.stat()
         self._update_attribute("file_size", file_info.st_size)
         self._update_attribute("file_modification_timestamp", file_info.st_mtime)
         self._update_attribute(
