@@ -21,12 +21,10 @@ url = "https://artefact.skao.int/repository/pypi-internal/simple"
 [tool.poetry.dependencies]
 python = "^3.10"
 pytango = "^9.5.0"
-asyncio = "^3.4.3"
 spead2 = "^4.3.1"
 pandas = "^2.2.1"
 ska-control-model = "^0.3.4"
-typing-extensions = "^4.10.0"
-watchfiles = "^0.21.0"
+watchdog = "^4.0.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.1.1"

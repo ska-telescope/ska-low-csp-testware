@@ -31,7 +31,6 @@ extlinks = {
 
 intersphinx_mapping = {
     "ska-dev-portal": ("https://developer.skao.int/en/latest", None),
-    "ska-tango-base": ("https://developer.skao.int/en/0.20.1", None),
     "sphinx": ("https://www.sphinx-doc.org/en/master/", None),
 }
 

@@ -15,31 +15,36 @@ from ska_low_csp_testware.common_types import PcapFileContents
 
 __all__ = ["read_visibilities"]
 
-module_logger = logging.getLogger(__name__)
-
 FAKE_VISIBILITIES = PcapFileContents(
     spead_headers=pd.DataFrame({"col1": [1, 2], "col2": [3, 4]}),
     spead_data=np.zeros((2, 2), dtype=np.complex64),
 )
 
 
-async def read_visibilities(pcap_file_path: Path, test_mode: TestMode = TestMode.NONE) -> PcapFileContents:
+def read_visibilities(
+    pcap_file_path: Path,
+    test_mode: TestMode = TestMode.NONE,
+    logger: logging.Logger | None = None,
+) -> PcapFileContents:
     """
     Read LOW-CBF visibility data from a PCAP file.
     """
 
     match test_mode:
         case TestMode.NONE:
-            return await _read_visibilities(pcap_file_path)
+            return _read_visibilities(pcap_file_path, logger=logger)
         case TestMode.TEST:
             return FAKE_VISIBILITIES
 
 
-async def _read_visibilities(pcap_file_path: Path) -> PcapFileContents:
+def _read_visibilities(
+    pcap_file_path: Path,
+    logger: logging.Logger | None = None,
+) -> PcapFileContents:
     headers = []
     averaged_data: dict[int, npt.NDArray[np.complex64]] = {}
 
-    async for heap, items in spead2_util.read_pcap_file(pcap_file_path, logger=module_logger):
+    for heap, items in spead2_util.read_pcap_file(pcap_file_path, logger=logger):
         if heap.is_start_of_stream():
             row = {}
             for key, item in items.items():

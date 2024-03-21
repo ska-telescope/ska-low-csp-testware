@@ -2,19 +2,30 @@
 Module for the ``PcapReader`` TANGO device.
 """
 
-import asyncio
 import io
 import json
+import threading
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import watchfiles
 from ska_control_model import TestMode
-from tango import DevState, GreenMode
+from tango import AttrQuality, DevState, DispLevel
 from tango.server import Device, attribute, command, device_property, run
+from watchdog.events import (
+    EVENT_TYPE_CREATED,
+    EVENT_TYPE_DELETED,
+    EVENT_TYPE_MODIFIED,
+    FileSystemEvent,
+    FileSystemEventHandler,
+)
+from watchdog.observers import Observer
 
+from ska_low_csp_testware.common_types import PcapFileContents
 from ska_low_csp_testware.low_cbf_vis import read_visibilities
 
 __all__ = ["PcapReader", "main"]
@@ -24,26 +35,22 @@ def _is_monitored_file(path: Path):
     return path.suffix == ".pcap"
 
 
-def _monitor_filter(change: watchfiles.Change, path: str):  # pylint: disable=unused-argument
-    return _is_monitored_file(Path(path))
-
-
-def _encode_spead_headers(spead_headers: pd.DataFrame) -> str:
-    return spead_headers.to_json()
-
-
-def _encode_spead_data(spead_data: npt.NDArray) -> bytes:
+def _encode_dataframe(df: pd.DataFrame) -> bytes:
     buffer = io.BytesIO()
-    np.save(buffer, spead_data)
+    df.to_pickle(buffer)
     return buffer.getvalue()
 
 
-class PcapReader(Device):
+def _encode_ndarray(array: npt.NDArray) -> bytes:
+    buffer = io.BytesIO()
+    np.save(buffer, array)
+    return buffer.getvalue()
+
+
+class PcapReader(Device, FileSystemEventHandler):
     """
     TANGO device that monitors a directory for PCAP files.
     """
-
-    green_mode = GreenMode.Asyncio
 
     pcap_dir: str = device_property(  # type: ignore
         doc="Absolute path on disk that points to a directory containing PCAP files",
@@ -54,21 +61,39 @@ class PcapReader(Device):
         default_value=TestMode.NONE,
     )
 
-    files: str = attribute(  # type: ignore
+    files = attribute(
+        dtype=str,
         label="PCAP files",
     )
 
+    spead_headers = attribute(
+        display_level=DispLevel.EXPERT,
+        dtype="DevEncoded",
+    )
+
+    spead_data = attribute(
+        display_level=DispLevel.EXPERT,
+        dtype="DevEncoded",
+    )
+
     def __init__(self, *args, **kwargs):
-        self._background_tasks: set[asyncio.Task] = set()
-        self._stop_event = asyncio.Event()
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
+        self._observer = Observer()
+        self._executor = ThreadPoolExecutor()
 
         self._files = {}
 
         super().__init__(*args, **kwargs)
 
-    async def init_device(self) -> None:  # pylint: disable=invalid-overridden-method
-        await super().init_device()  # type: ignore
+    @property
+    def pcap_dir_path(self) -> Path:
+        """
+        Property wrapper for the ``pcap_dir`` device property.
+        """
+        return Path(self.pcap_dir)
+
+    def init_device(self) -> None:
+        super().init_device()
         self.debug_stream("Device init started")
 
         self.set_state(DevState.INIT)
@@ -76,71 +101,55 @@ class PcapReader(Device):
         for attribute_name in ["files"]:
             self.set_change_event(attribute_name, True, False)
 
-        await self._start_monitoring()
+        self._process_existing_files()
+        self._observer.schedule(self, self.pcap_dir_path, recursive=True)
+        self._observer.start()
 
         self.set_state(DevState.ON)
         self.debug_stream("Device init completed")
 
-    async def delete_device(self) -> None:  # pylint: disable=invalid-overridden-method
+    def delete_device(self) -> None:
         self.debug_stream("Device deinit started")
-        self._stop_event.set()
-        await asyncio.gather(*self._background_tasks)
+        self._observer.stop()
+        self._observer.join()
+        self._executor.shutdown(cancel_futures=True)
         self.debug_stream("Device deinit completed")
 
-        await super().delete_device()  # type: ignore
+        super().delete_device()
 
-    async def _process_existing_files(self) -> None:
-        path = Path(self.pcap_dir)
-        for file in path.rglob("*.pcap"):
-            await self._update_file(file)
+    def _process_existing_files(self) -> None:
+        for file in self.pcap_dir_path.rglob("*.pcap"):
+            self._update_file(file)
 
-    async def _start_monitoring(self) -> None:
-        await self._process_existing_files()
-
-        task = asyncio.create_task(self._monitor())
-        self._background_tasks.add(task)
-        task.add_done_callback(self._background_tasks.discard)
-
-    async def _monitor(self) -> None:
-        self.info_stream("Start monitoring files")
-        async for changes in watchfiles.awatch(
-            self.pcap_dir,
-            watch_filter=_monitor_filter,
-            ignore_permission_denied=True,
-            rust_timeout=0,
-            stop_event=self._stop_event,
-        ):
-            for change, path in changes:
-                match change:
-                    case watchfiles.Change.added | watchfiles.Change.modified:
-                        await self._update_file(Path(path))
-                    case watchfiles.Change.deleted:
-                        await self._remove_file(Path(path))
-
-        self.info_stream("Stop monitoring files")
-        self.set_state(DevState.OFF)
-
-    async def _update_file(self, file: Path) -> None:
-        file_name = str(file.relative_to(self.pcap_dir))
+    def _update_file(self, file: Path) -> None:
+        file_name = str(file.relative_to(self.pcap_dir_path))
         self.info_stream("Updating file %s", file_name)
 
         file_info = file.stat()
 
-        async with self._lock:
+        with self._lock:
             self._files[file_name] = {
                 "size": file_info.st_size,
                 "mtime": file_info.st_mtime,
             }
             self.push_change_event("files", json.dumps(self._files))
 
-    async def _remove_file(self, file: Path) -> None:
-        file_name = str(file.relative_to(self.pcap_dir))
+    def _remove_file(self, file: Path) -> None:
+        file_name = str(file.relative_to(self.pcap_dir_path))
         self.info_stream("Removing file %s", file_name)
 
-        async with self._lock:
+        with self._lock:
             if file_name in self._files:
                 del self._files[file_name]
                 self.push_change_event("files", json.dumps(self._files))
+
+    def on_any_event(self, event: FileSystemEvent) -> None:
+        file = Path(event.src_path)
+        if _is_monitored_file(file):
+            if event.event_type in {EVENT_TYPE_CREATED, EVENT_TYPE_MODIFIED}:
+                self._update_file(file)
+            elif event.event_type == EVENT_TYPE_DELETED:
+                self._remove_file(file)
 
     def read_files(self) -> str:
         """
@@ -148,30 +157,76 @@ class PcapReader(Device):
         """
         return json.dumps(self._files)
 
+    def read_spead_headers(self) -> tuple[str, bytes, float, AttrQuality]:
+        """
+        Read method for the ``spead_headers`` device attribute.
+        """
+        return (
+            "",
+            bytes(),
+            time.time(),
+            AttrQuality.ATTR_INVALID,
+        )
+
+    def read_spead_data(self) -> tuple[str, bytes, float, AttrQuality]:
+        """
+        Read method for the ``spead_data`` device attribute.
+        """
+        return (
+            "",
+            bytes(),
+            time.time(),
+            AttrQuality.ATTR_INVALID,
+        )
+
     @command
-    async def RemoveFile(self, file_name: str) -> None:  # pylint: disable=invalid-name
+    def RemoveFile(self, file_name: str) -> None:  # pylint: disable=invalid-name
         """
         Remove the specified file from the file system.
         """
-        async with self._lock:
+        with self._lock:
             if file_name not in self._files:
                 raise ValueError("Unknown file")
 
         self.info_stream("Removing file %s", file_name)
-        file_path = Path(self.pcap_dir, file_name)
-        file_path.unlink(missing_ok=True)
+        self.pcap_dir_path.joinpath(file_name).unlink(missing_ok=True)
 
-    @command(dtype_out="DevEncoded")
-    async def ReadVisibilityData(self, file_name: str) -> tuple[str, bytes]:  # pylint: disable=invalid-name
+    @command
+    def ReadVisibilityData(self, file_name: str) -> None:  # pylint: disable=invalid-name
         """
         Read visibility data from the specified file.
         """
-        file_path = Path(self.pcap_dir, file_name)
-        file_contents = await read_visibilities(file_path, TestMode(self.test_mode))
-        return (
-            _encode_spead_headers(file_contents.spead_headers),
-            _encode_spead_data(file_contents.spead_data),
+        with self._lock:
+            if file_name not in self._files:
+                raise ValueError("Unknown file")
+
+        self.info_stream("Reading visibility data from file %s", file_name)
+        future = self._executor.submit(
+            read_visibilities,
+            self.pcap_dir_path.joinpath(file_name),
+            test_mode=TestMode(self.test_mode),
         )
+        future.add_done_callback(partial(self._on_visibility_data, file_name))
+
+    def _on_visibility_data(self, file_name: str, data: Future[PcapFileContents]) -> None:
+        def _push_event(attr_name: str, data: bytes):
+            self.push_event(
+                attr_name,
+                [],
+                [],
+                file_name,
+                data,
+                time.time(),
+                AttrQuality.ATTR_VALID,
+            )
+
+        if e := data.exception():
+            self.warn_stream("Failed reading visibility data: %s", e)
+            return
+
+        file_contents = data.result()
+        _push_event("spead_headers", _encode_dataframe(file_contents.spead_headers))
+        _push_event("spead_data", _encode_ndarray(file_contents.spead_data))
 
 
 def main(args=None, **kwargs):  # pylint: disable=missing-function-docstring
