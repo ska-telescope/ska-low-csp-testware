@@ -64,8 +64,8 @@ resources:
 deviceServers:
   pcap-reader:
     name: "pcap-reader-{{.Release.Name}}"
-    function: testing
-    domain: ska-low-csp-testware
+    function: testware
+    domain: ska-low-csp
     instances: ["1"]
     command: pcap_reader
     server:
@@ -75,7 +75,7 @@ deviceServers:
           classes:
             - name: PcapReader
               devices:
-                - name: "low-csp/testware/pcap-reader/1"
+                - name: "low-csp/testware/pcap-reader-1"
                   properties:
                     - name: pcap_dir
                       values:
