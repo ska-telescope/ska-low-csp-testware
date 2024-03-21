@@ -4,6 +4,7 @@ Module for the ``PcapReader`` TANGO device.
 
 import io
 import json
+import logging
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -26,6 +27,7 @@ from watchdog.events import (
 from watchdog.observers import Observer
 
 from ska_low_csp_testware.common_types import PcapFileContents
+from ska_low_csp_testware.logging import TangoLoggingServiceHandler
 from ska_low_csp_testware.low_cbf_vis import read_visibilities
 
 __all__ = ["PcapReader", "main"]
@@ -94,9 +96,12 @@ class PcapReader(Device, FileSystemEventHandler):
 
     def init_device(self) -> None:
         super().init_device()
-        self.debug_stream("Device init started")
+
+        self._logger = logging.getLogger(self.get_name())
+        self._logger.addHandler(TangoLoggingServiceHandler(self.get_logger()))
 
         self.set_state(DevState.INIT)
+        self._logger.debug("Device init started")
 
         for attribute_name in ["files"]:
             self.set_change_event(attribute_name, True, False)
@@ -106,14 +111,14 @@ class PcapReader(Device, FileSystemEventHandler):
         self._observer.start()
 
         self.set_state(DevState.ON)
-        self.debug_stream("Device init completed")
+        self._logger.debug("Device init completed")
 
     def delete_device(self) -> None:
-        self.debug_stream("Device deinit started")
+        self._logger.debug("Device deinit started")
         self._observer.stop()
         self._observer.join()
         self._executor.shutdown(cancel_futures=True)
-        self.debug_stream("Device deinit completed")
+        self._logger.debug("Device deinit completed")
 
         super().delete_device()
 
@@ -123,7 +128,7 @@ class PcapReader(Device, FileSystemEventHandler):
 
     def _update_file(self, file: Path) -> None:
         file_name = str(file.relative_to(self.pcap_dir_path))
-        self.info_stream("Updating file %s", file_name)
+        self._logger.info("Updating file %s", file_name)
 
         file_info = file.stat()
 
@@ -136,7 +141,7 @@ class PcapReader(Device, FileSystemEventHandler):
 
     def _remove_file(self, file: Path) -> None:
         file_name = str(file.relative_to(self.pcap_dir_path))
-        self.info_stream("Removing file %s", file_name)
+        self._logger.info("Removing file %s", file_name)
 
         with self._lock:
             if file_name in self._files:
@@ -188,7 +193,7 @@ class PcapReader(Device, FileSystemEventHandler):
             if file_name not in self._files:
                 raise ValueError("Unknown file")
 
-        self.info_stream("Removing file %s", file_name)
+        self._logger.info("Removing file %s", file_name)
         self.pcap_dir_path.joinpath(file_name).unlink(missing_ok=True)
 
     @command
@@ -200,11 +205,12 @@ class PcapReader(Device, FileSystemEventHandler):
             if file_name not in self._files:
                 raise ValueError("Unknown file")
 
-        self.info_stream("Reading visibility data from file %s", file_name)
+        self._logger.info("Reading visibility data from file %s", file_name)
         future = self._executor.submit(
             read_visibilities,
             self.pcap_dir_path.joinpath(file_name),
             test_mode=TestMode(self.test_mode),
+            logger=self._logger,
         )
         future.add_done_callback(partial(self._on_visibility_data, file_name))
 
@@ -221,7 +227,7 @@ class PcapReader(Device, FileSystemEventHandler):
             )
 
         if e := data.exception():
-            self.warn_stream("Failed reading visibility data: %s", e)
+            self._logger.warning("Failed reading visibility data: %s", e)
             return
 
         file_contents = data.result()
