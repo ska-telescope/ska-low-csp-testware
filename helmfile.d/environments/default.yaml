@@ -18,6 +18,7 @@ taranta:
   enabled: false
 
 ska-tango-base:
+  enabled: true
   deviceServers:
     tangotest:
       instances: []

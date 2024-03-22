@@ -80,12 +80,6 @@ deviceServers:
                     - name: pcap_dir
                       values:
                         - "/pcap"
-                    - name: logging_level
-                      values:
-                        - INFO
-                    - name: logging_target
-                      values:
-                        - console
     depends_on:
       - device: sys/database/2
     image:

@@ -45,7 +45,6 @@ def fxt_device(pcap_dir: Path):
         yield device
 
 
-@pytest.mark.debug
 def test_files_attribute_reacts_to_created_pcap_file(
     pcap_dir: Path,
     device: DeviceProxy,

@@ -15,7 +15,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from ska_control_model import TestMode
-from tango import AttrQuality, DevState, DispLevel
+from tango import AttrQuality, AttrWriteType, DevState, DispLevel
 from tango.server import Device, attribute, command, device_property, run
 from watchdog.events import (
     EVENT_TYPE_CREATED,
@@ -27,7 +27,7 @@ from watchdog.events import (
 from watchdog.observers import Observer
 
 from ska_low_csp_testware.common_types import PcapFileContents
-from ska_low_csp_testware.logging import TangoLoggingServiceHandler
+from ska_low_csp_testware.logging import configure_logging, get_logger
 from ska_low_csp_testware.low_cbf_vis import read_visibilities
 
 __all__ = ["PcapReader", "main"]
@@ -68,6 +68,10 @@ class PcapReader(Device, FileSystemEventHandler):
         label="PCAP files",
     )
 
+    logging_level: str = attribute(  # type: ignore
+        access=AttrWriteType.READ_WRITE,
+    )
+
     spead_headers = attribute(
         display_level=DispLevel.EXPERT,
         dtype="DevEncoded",
@@ -79,6 +83,7 @@ class PcapReader(Device, FileSystemEventHandler):
     )
 
     def __init__(self, *args, **kwargs):
+        self._logger = get_logger(self, __name__)
         self._lock = threading.Lock()
         self._observer = Observer()
         self._executor = ThreadPoolExecutor()
@@ -97,34 +102,41 @@ class PcapReader(Device, FileSystemEventHandler):
     def init_device(self) -> None:
         super().init_device()
 
-        self._logger = logging.getLogger(self.get_name())
-        self._logger.addHandler(TangoLoggingServiceHandler(self.get_logger()))
-
         self.set_state(DevState.INIT)
-        self._logger.debug("Device init started")
+        self._logger.info("Device init started")
 
         for attribute_name in ["files"]:
             self.set_change_event(attribute_name, True, False)
 
-        self._process_existing_files()
-        self._observer.schedule(self, self.pcap_dir_path, recursive=True)
-        self._observer.start()
-
-        self.set_state(DevState.ON)
-        self._logger.debug("Device init completed")
-
-    def delete_device(self) -> None:
-        self._logger.debug("Device deinit started")
-        self._observer.stop()
-        self._observer.join()
-        self._executor.shutdown(cancel_futures=True)
-        self._logger.debug("Device deinit completed")
-
-        super().delete_device()
-
-    def _process_existing_files(self) -> None:
+        self._logger.info("Updating state to match monitored directory state")
         for file in self.pcap_dir_path.rglob("*.pcap"):
             self._update_file(file)
+
+        if self._observer.is_alive():
+            self._logger.debug("File observer already running, no need to start it again")
+        else:
+            self._logger.info("Starting file observer")
+            self._observer.schedule(self, self.pcap_dir_path, recursive=True)
+            self._observer.start()
+
+        self.set_state(DevState.ON)
+        self._logger.info("Device init completed")
+
+    def delete_device(self) -> None:
+        self._logger.info("Device deinit started")
+
+        if self._observer.is_alive():
+            self._logger.info("Stopping file observer")
+            self._observer.stop()
+            self._observer.join()
+        else:
+            self._logger.debug("File observer not running, no need to stop it")
+
+        self._logger.info("Stopping background task executor")
+        self._executor.shutdown(cancel_futures=True)
+
+        self._logger.info("Device deinit completed")
+        super().delete_device()
 
     def _update_file(self, file: Path) -> None:
         file_name = str(file.relative_to(self.pcap_dir_path))
@@ -151,6 +163,8 @@ class PcapReader(Device, FileSystemEventHandler):
     def on_any_event(self, event: FileSystemEvent) -> None:
         file = Path(event.src_path)
         if _is_monitored_file(file):
+            self._logger.debug("Received %s event for file %s", event.event_type, file)
+
             if event.event_type in {EVENT_TYPE_CREATED, EVENT_TYPE_MODIFIED}:
                 self._update_file(file)
             elif event.event_type == EVENT_TYPE_DELETED:
@@ -161,6 +175,21 @@ class PcapReader(Device, FileSystemEventHandler):
         Read method for the ``files`` device attribute.
         """
         return json.dumps(self._files)
+
+    def read_logging_level(self) -> str:
+        """
+        Read method for the ``logging_level`` device attribute.
+        """
+        return logging.getLevelName(self._logger.level)
+
+    def write_logging_level(self, logging_level: str) -> None:
+        """
+        Write method for the ``logging_level`` device attribute.
+
+        :param logging_level: Python logging level, such as "INFO", "DEBUG" etc.
+        """
+        self._logger.setLevel(logging_level)
+        self._logger.info("Logging level set to %s", logging_level)
 
     def read_spead_headers(self) -> tuple[str, bytes, float, AttrQuality]:
         """
@@ -216,6 +245,7 @@ class PcapReader(Device, FileSystemEventHandler):
 
     def _on_visibility_data(self, file_name: str, data: Future[PcapFileContents]) -> None:
         def _push_event(attr_name: str, data: bytes):
+            self._logger.debug("Pushing user event for attribute %s and file %s", attr_name, file_name)
             self.push_event(
                 attr_name,
                 [],
@@ -227,15 +257,17 @@ class PcapReader(Device, FileSystemEventHandler):
             )
 
         if e := data.exception():
-            self._logger.warning("Failed reading visibility data: %s", e)
+            self._logger.warning("Failed reading visibility data from file %s: %s", file_name, e)
             return
 
+        self._logger.info("Finished reading visibility data from file %s", file_name)
         file_contents = data.result()
         _push_event("spead_headers", _encode_dataframe(file_contents.spead_headers))
         _push_event("spead_data", _encode_ndarray(file_contents.spead_data))
 
 
 def main(args=None, **kwargs):  # pylint: disable=missing-function-docstring
+    configure_logging()
     return run((PcapReader,), args=args, **kwargs)
 
 

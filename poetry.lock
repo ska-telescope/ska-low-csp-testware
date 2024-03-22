@@ -1319,6 +1319,23 @@ url = "https://artefact.skao.int/repository/pypi-internal/simple"
 reference = "ska-nexus"
 
 [[package]]
+name = "ska-ser-logging"
+version = "0.4.3"
+description = "Square Kilometre Array logging configuration library"
+category = "main"
+optional = false
+python-versions = ">=3.10,<4.0"
+files = [
+    {file = "ska_ser_logging-0.4.3-py3-none-any.whl", hash = "sha256:06a337e4e726f36d24b86087ec106fbb9e65be4566fe328eb56f56f2310322f8"},
+    {file = "ska_ser_logging-0.4.3.tar.gz", hash = "sha256:a94aa51db54ad2a88af4c320c850c766c1733d9f8534381dd67f993e8e4f5d11"},
+]
+
+[package.source]
+type = "legacy"
+url = "https://artefact.skao.int/repository/pypi-internal/simple"
+reference = "ska-nexus"
+
+[[package]]
 name = "ska-ser-sphinx-theme"
 version = "0.1.2"
 description = "A Sphinx ReadTheDocs theme for SKA"
@@ -1830,4 +1847,4 @@ reference = "default"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "1909910a5647eadf5f3b3dca467a4d91d0b96fb7098153e8cd2a5f4ab1085c5b"
+content-hash = "54bc503ea8f81891a6be9859060ed666807d86eee380ce9debe71c4e09b9f270"

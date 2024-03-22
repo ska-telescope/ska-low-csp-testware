@@ -1,65 +1,51 @@
 """
-Module to set up logging for TANGO devices.
-
-This module is loosely based on ``ska_tango_base.base.logging``.
+Module to help set up logging for TANGO devices.
 """
 
-import enum
+import functools
 import logging
 
-import tango
+import ska_ser_logging
+from tango.server import Device
 
-__all__ = ["TangoLoggingServiceHandler"]
+__all__ = [
+    "configure_logging",
+    "get_logger",
+]
 
 
-class _Log4TangoLoggingLevel(enum.IntEnum):
+class _EnsureTagsFilter(logging.Filter):  # pylint: disable=too-few-public-methods
+    def filter(self, record: logging.LogRecord) -> bool | logging.LogRecord:
+        if not hasattr(record, "tags"):
+            record.tags = ""
+        return True
+
+
+class _AddDeviceNameTag(logging.Filter):  # pylint: disable=too-few-public-methods
+    def __init__(self, device: Device, name: str = "") -> None:
+        self._device = device
+        super().__init__(name)
+
+    @functools.cached_property
+    def _device_name_tag(self) -> str:
+        return f"tango-device:{self._device.get_name()}"
+
+    def filter(self, record: logging.LogRecord) -> bool | logging.LogRecord:
+        record.tags = self._device_name_tag
+        return True
+
+
+def configure_logging():
     """
-    Python enumerated type for Tango log4tango logging levels.
-
-    This is different to tango.LogLevel, and is required if using
-    a device's set_log_level() method.  It is not currently exported
-    via PyTango, so we hard code it here in the interim.
-
-    Source:
-       https://gitlab.com/tango-controls/cppTango/blob/
-       4feffd7c8e24b51c9597a40b9ef9982dd6e99cdf/log4tango/include/log4tango/Level.hh
-       #L86-93
+    Configure the Python logging library with SKAO defaults.
     """
-
-    OFF = 100
-    FATAL = 200
-    ERROR = 300
-    WARN = 400
-    INFO = 500
-    DEBUG = 600
+    ska_ser_logging.configure_logging(tags_filter=_EnsureTagsFilter)
 
 
-_PYTHON_TO_TANGO_LOGGING_LEVEL = {
-    logging.CRITICAL: _Log4TangoLoggingLevel.FATAL,
-    logging.ERROR: _Log4TangoLoggingLevel.ERROR,
-    logging.WARNING: _Log4TangoLoggingLevel.WARN,
-    logging.INFO: _Log4TangoLoggingLevel.INFO,
-    logging.DEBUG: _Log4TangoLoggingLevel.DEBUG,
-}
-
-
-class TangoLoggingServiceHandler(logging.Handler):
+def get_logger(device: Device, name: str | None = None) -> logging.Logger:
     """
-    Logging handler that forwards logs to the Tango Logging Service.
+    Creates a new Python logger for a TANGO device.
     """
-
-    def __init__(self, tango_logger: tango.Logger) -> None:
-        super().__init__()
-        self.tango_logger = tango_logger
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            msg = self.format(record)
-            tango_level = _PYTHON_TO_TANGO_LOGGING_LEVEL[record.levelno]
-            self.acquire()
-            try:
-                self.tango_logger.log(tango_level, msg)
-            finally:
-                self.release()
-        except Exception:  # pylint: disable=broad-except
-            self.handleError(record)
+    logger = logging.getLogger(name)
+    logger.addFilter(_AddDeviceNameTag(device))
+    return logger

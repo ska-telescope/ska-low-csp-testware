@@ -19,18 +19,19 @@ name = "ska-nexus"
 url = "https://artefact.skao.int/repository/pypi-internal/simple"
 
 [tool.poetry.dependencies]
+pandas = "^2.2.1"
 python = "^3.10"
 pytango = "^9.5.0"
-spead2 = "^4.3.1"
-pandas = "^2.2.1"
 ska-control-model = "^0.3.4"
+ska-ser-logging = "^0.4.3"
+spead2 = "^4.3.1"
 watchdog = "^4.0.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.1.1"
 pytest-cov = "^4.1.0"
-ska-tango-testing = "^0.6.1"
 pytest-forked = "^1.6.0"
+ska-tango-testing = "^0.6.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.0"
