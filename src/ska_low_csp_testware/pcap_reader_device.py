@@ -61,25 +61,44 @@ class PcapReader(Device, FileSystemEventHandler):
 
     test_mode: int = device_property(  # type: ignore
         default_value=TestMode.NONE,
+        doc=(
+            "Test mode can be used to interact with the device in environments "
+            "where actually reading PCAP file contents is not possible"
+        ),
     )
 
     files = attribute(
+        doc="Attribute exposing file information for all monitored PCAP files.",
         dtype=str,
         label="PCAP files",
     )
 
     logging_level: str = attribute(  # type: ignore
         access=AttrWriteType.READ_WRITE,
+        doc="Attribute that controls the logging level for this device.",
+        label="Logging level",
     )
 
     spead_headers = attribute(
         display_level=DispLevel.EXPERT,
+        doc=(
+            "Attribute to which SPEAD headers are published. "
+            "This attribute can't be read directly as the value depends on which file is read. "
+            "Users must subscribe to USER_EVENT events instead."
+        ),
         dtype="DevEncoded",
+        label="SPEAD headers",
     )
 
     spead_data = attribute(
         display_level=DispLevel.EXPERT,
+        doc=(
+            "Attribute to which SPEAD data is published. "
+            "This attribute can't be read directly as the value depends on which file is read. "
+            "Users must subscribe to USER_EVENT events instead."
+        ),
         dtype="DevEncoded",
+        label="SPEAD data",
     )
 
     def __init__(self, *args, **kwargs):
