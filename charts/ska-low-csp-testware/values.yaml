@@ -61,6 +61,9 @@ resources:
     cpu: 4
     memory: 16Gi
 
+pcap_reader:
+  pcap_dir: /mnt/pcap-files
+
 deviceServers:
   pcap-reader:
     name: "pcap-reader-{{.Release.Name}}"
@@ -79,7 +82,7 @@ deviceServers:
                   properties:
                     - name: pcap_dir
                       values:
-                        - "/pcap"
+                        - "{{.Values.pcap_reader.pcap_dir}}"
     depends_on:
       - device: sys/database/2
     image:

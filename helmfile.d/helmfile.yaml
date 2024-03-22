@@ -1,11 +1,12 @@
 environments:
-  default:
-    values:
-      - environments/default.yaml
   digital-signal-psi:
     values:
       - environments/default.yaml
       - environments/digital-signal-psi.yaml
+  minikube:
+    values:
+      - environments/default.yaml
+      - environments/minikube.yaml
 ---
 repositories:
   - name: skatelescope

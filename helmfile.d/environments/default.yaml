@@ -4,10 +4,7 @@ global:
   annotations:
     app.gitlab.com/app: ska-low-csp-testware
     app.gitlab.com/env: ska-low-csp-testware
-  minikube: true
-  exposeAllDS: true
-  operator: true
-  tango_host: ska-low-csp-databaseds:10000
+  tango_host: databaseds-tango-base-test:10000
   sub-system:
     ska-tango-base:
       enabled: false
@@ -18,9 +15,4 @@ taranta:
   enabled: false
 
 ska-tango-base:
-  enabled: true
-  deviceServers:
-    tangotest:
-      instances: []
-  itango:
-    enabled: true
+  enabled: false

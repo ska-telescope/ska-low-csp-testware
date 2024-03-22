@@ -1,5 +1,8 @@
 global:
+  exposeAllDS: true
   minikube: false
+  operator: true
+  tango_host: ska-low-csp-databaseds:10000
 
 taranta:
   enabled: false
@@ -18,7 +21,7 @@ ska-low-csp-testware:
             path: /mnt/ssd
             type: Directory
       extraVolumeMounts:
-        - mountPath: /pcap
+        - mountPath: /mnt/pcap-files
           name: pcap-files
   tolerations:
     - key: node-role.skatelescope.org/fpga-worker

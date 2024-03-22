@@ -34,7 +34,7 @@ include .make/helm.mk
 
 K8S_USE_HELMFILE = true
 K8S_HELMFILE = helmfile.d/helmfile.yaml
-K8S_HELMFILE_ENV ?= default
+K8S_HELMFILE_ENV ?= minikube
 
 include .make/k8s.mk
 
