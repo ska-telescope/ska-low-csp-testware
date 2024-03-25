@@ -64,3 +64,6 @@ max-line-length = 127
 
 [tool.pylint.messages_control]
 disable = ["duplicate-code"]
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore:Coverage run detected:tango.PyTangoUserWarning"]
