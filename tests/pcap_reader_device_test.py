@@ -31,8 +31,6 @@ def fxt_pcap_dir(tmp_path: Path, existing_pcap_file_name: str):
 def fxt_event_callbacks():
     return MockTangoEventCallbackGroup(
         "file_name_mapping",
-        "spead_data",
-        "spead_headers",
     )
 
 
@@ -61,8 +59,8 @@ def test_dynamic_attributes_are_created_for_existing_files_after_init(
     existing_pcap_file_name: str,
 ):
     attr_prefix = json.loads(device.file_name_mapping)[existing_pcap_file_name]
-    assert f"{attr_prefix}_data" in device.get_attribute_list()
-    assert f"{attr_prefix}_info" in device.get_attribute_list()
+    assert f"{attr_prefix}__data" in device.get_attribute_list()
+    assert f"{attr_prefix}__info" in device.get_attribute_list()
 
 
 def test_file_info_attribute_is_present_for_existing_files_after_init(
@@ -70,7 +68,7 @@ def test_file_info_attribute_is_present_for_existing_files_after_init(
     existing_pcap_file_name: str,
 ):
     attr_prefix = json.loads(device.file_name_mapping)[existing_pcap_file_name]
-    info_attr = device.read_attribute(f"{attr_prefix}_info")
+    info_attr = device.read_attribute(f"{attr_prefix}__info")
     file_info = json.loads(info_attr.value)
     assert "size" in file_info
     assert "mtime" in file_info
@@ -99,38 +97,38 @@ def test_dynamic_attributes_are_removed_when_file_is_deleted(
     file.unlink()
     time.sleep(0.5)
 
-    assert f"{attr_prefix}_data" not in device.get_attribute_list()
-    assert f"{attr_prefix}_info" not in device.get_attribute_list()
+    assert f"{attr_prefix}__data" not in device.get_attribute_list()
+    assert f"{attr_prefix}__info" not in device.get_attribute_list()
 
 
 def test_files_attribute_reacts_to_created_pcap_file(
     pcap_dir: Path,
     device: DeviceProxy,
-    event_callbacks: MockTangoEventCallbackGroup,
 ):
     existing_files = device.file_name_mapping
+    callbacks = MockTangoEventCallbackGroup("file_name_mapping")
 
     device.subscribe_event(
         "file_name_mapping",
         EventType.CHANGE_EVENT,
-        event_callbacks["file_name_mapping"],
+        callbacks["file_name_mapping"],
     )
 
     time.sleep(0.5)
-    event_callbacks["file_name_mapping"].assert_change_event(existing_files)
+    callbacks["file_name_mapping"].assert_change_event(existing_files)
 
     pcap_file = pcap_dir / "new_pcap_file.pcap"
     pcap_file.touch()
     time.sleep(0.5)
 
     assert pcap_file.name in json.loads(device.file_name_mapping)
-    event_callbacks["file_name_mapping"].assert_change_event(device.file_name_mapping)
+    callbacks["file_name_mapping"].assert_change_event(device.file_name_mapping)
 
     pcap_file.unlink()
     time.sleep(0.5)
 
     assert pcap_file.name not in json.loads(device.file_name_mapping)
-    event_callbacks["file_name_mapping"].assert_change_event(device.file_name_mapping)
+    callbacks["file_name_mapping"].assert_change_event(device.file_name_mapping)
 
 
 @pytest.mark.debug
@@ -139,7 +137,7 @@ def test_read_visibilities(
     existing_pcap_file_name: str,
 ):
     attr_prefix = json.loads(device.file_name_mapping)[existing_pcap_file_name]
-    attr_name = f"{attr_prefix}_data"
+    attr_name = f"{attr_prefix}__data"
     callbacks = MockTangoEventCallbackGroup(attr_name)
     device.subscribe_event(attr_name, EventType.CHANGE_EVENT, callbacks[attr_name])
     time.sleep(0.5)

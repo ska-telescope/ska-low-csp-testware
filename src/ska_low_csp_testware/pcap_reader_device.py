@@ -3,10 +3,10 @@ Module for the ``PcapReader`` TANGO device.
 """
 
 import base64
-import hashlib
 import io
 import json
 import logging
+import re
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -46,6 +46,13 @@ def _encode_ndarray(array: npt.NDArray) -> bytes:
     buffer = io.BytesIO()
     np.save(buffer, array)
     return buffer.getvalue()
+
+
+def _file_name_to_attr_name(file_name: str, suffix: str | None = None) -> str:
+    attr_name = re.sub(r"[\./]", "__", file_name)
+    if suffix:
+        attr_name += "__" + suffix
+    return attr_name
 
 
 class CustomJsonEncoder(json.JSONEncoder):
@@ -201,8 +208,6 @@ class PcapReader(Device, FileSystemEventHandler):
             if file_name not in self._file_name_mapping:
                 raise ValueError("Unknown file")
 
-        attr_prefix = self._file_name_mapping[file_name]
-
         self._logger.info("Reading visibility data from file %s", file_name)
         future = self._executor.submit(
             read_visibilities,
@@ -210,7 +215,7 @@ class PcapReader(Device, FileSystemEventHandler):
             test_mode=TestMode(self.test_mode),
             logger=self._logger,
         )
-        future.add_done_callback(partial(self._on_visibility_data, file_name, f"{attr_prefix}_data"))
+        future.add_done_callback(partial(self._on_visibility_data, file_name))
 
     def on_any_event(self, event: FileSystemEvent) -> None:
         file_name = str(Path(event.src_path).relative_to(self.pcap_dir_path))
@@ -228,15 +233,12 @@ class PcapReader(Device, FileSystemEventHandler):
 
     def _sync_file_present(self, file_name: str) -> None:
         with self._lock:
-            if file_name in self._file_name_mapping:
-                attr_prefix = self._file_name_mapping[file_name]
-            else:
-                attr_prefix = self._attr_key(file_name)
-                self._file_name_mapping[file_name] = attr_prefix
+            if file_name not in self._file_name_mapping:
+                self._file_name_mapping[file_name] = _file_name_to_attr_name(file_name)
                 self.push_change_event("file_name_mapping", json.dumps(self._file_name_mapping))
 
         for attr_suffix in ["data", "info"]:
-            attr_name = f"{attr_prefix}_{attr_suffix}"
+            attr_name = _file_name_to_attr_name(file_name, suffix=attr_suffix)
             if self._attr_exists(attr_name):
                 continue
 
@@ -255,12 +257,11 @@ class PcapReader(Device, FileSystemEventHandler):
             if file_name not in self._file_name_mapping:
                 return
 
-            attr_prefix = self._file_name_mapping[file_name]
             del self._file_name_mapping[file_name]
             self.push_change_event("file_name_mapping", json.dumps(self._file_name_mapping))
 
             for attr_suffix in ["data", "info"]:
-                attr_name = f"{attr_prefix}_{attr_suffix}"
+                attr_name = _file_name_to_attr_name(file_name, suffix=attr_suffix)
                 if not self._attr_exists(attr_name):
                     continue
 
@@ -273,28 +274,27 @@ class PcapReader(Device, FileSystemEventHandler):
         self._logger.debug("Updating file info %s", file_name)
 
         file_info = self.pcap_dir_path.joinpath(file_name).stat()
+        attr_name = _file_name_to_attr_name(file_name, "info")
+        attr_value = json.dumps(
+            {
+                "size": file_info.st_size,
+                "mtime": file_info.st_mtime,
+            }
+        )
 
         with self._lock:
-            attr_name = f"{self._file_name_mapping[file_name]}_info"
-            attr_value = json.dumps(
-                {
-                    "size": file_info.st_size,
-                    "mtime": file_info.st_mtime,
-                }
-            )
             self._dynamic_attr_data[attr_name] = attr_value
             self.push_change_event(attr_name, attr_value)
 
-    def _attr_key(self, file_name: str) -> str:
-        return hashlib.sha1(file_name.encode(), usedforsecurity=False).hexdigest()
-
-    def _on_visibility_data(self, file_name: str, attr_name: str, data: Future[PcapFileContents]) -> None:
+    def _on_visibility_data(self, file_name: str, data: Future[PcapFileContents]) -> None:
         if e := data.exception():
             self._logger.warning("Failed reading visibility data from file %s: %s", file_name, e)
             return
 
         self._logger.info("Finished reading visibility data from file %s", file_name)
         file_contents = data.result()
+
+        attr_name = _file_name_to_attr_name(file_name, suffix="data")
         attr_value = json.dumps(
             {
                 "headers": _encode_dataframe(file_contents.spead_headers),
@@ -303,10 +303,9 @@ class PcapReader(Device, FileSystemEventHandler):
             cls=CustomJsonEncoder,
         )
 
-        self.push_change_event(attr_name, attr_value, time.time(), AttrQuality.ATTR_VALID)
-
         with self._lock:
             self._dynamic_attr_data[attr_name] = attr_value
+            self.push_change_event(attr_name, attr_value, time.time(), AttrQuality.ATTR_VALID)
 
     def _attr_exists(self, attr_name: str) -> bool:
         try:
