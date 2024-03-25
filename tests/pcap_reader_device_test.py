@@ -65,6 +65,17 @@ def test_dynamic_attributes_are_created_for_existing_files_after_init(
     assert f"{attr_prefix}_info" in device.get_attribute_list()
 
 
+def test_file_info_attribute_is_present_for_existing_files_after_init(
+    device: DeviceProxy,
+    existing_pcap_file_name: str,
+):
+    attr_prefix = json.loads(device.file_name_mapping)[existing_pcap_file_name]
+    info_attr = device.read_attribute(f"{attr_prefix}_info")
+    file_info = json.loads(info_attr.value)
+    assert "size" in file_info
+    assert "mtime" in file_info
+
+
 def test_files_attribute_does_not_contain_file_when_deleted(
     device: DeviceProxy,
     pcap_dir: Path,

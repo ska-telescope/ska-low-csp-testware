@@ -117,8 +117,10 @@ class PcapReader(Device, FileSystemEventHandler):
             self.set_change_event(attribute_name, True, False)
 
         self._logger.info("Updating state to match monitored directory state")
-        for file in self.pcap_dir_path.rglob("*.pcap"):
-            self._sync_file_present(str(file.relative_to(self.pcap_dir_path)))
+        for file_path in self.pcap_dir_path.rglob("*.pcap"):
+            file_name = str(file_path.relative_to(self.pcap_dir_path))
+            self._sync_file_present(file_name)
+            self._update_file_info(file_name)
 
         if self._observer.is_alive():
             self._logger.debug("File observer already running, no need to start it again")
@@ -239,7 +241,12 @@ class PcapReader(Device, FileSystemEventHandler):
                 continue
 
             self._logger.info("Creating dynamic attribute %s", attr_name)
-            attr = attribute(name=attr_name, dtype=str, fget=self.read_dynamic_attr)
+            attr = attribute(
+                name=attr_name,
+                dtype=str,
+                fget=self.read_dynamic_attr,
+                label=f"{file_name} - {attr_suffix}",
+            )
             self.add_attribute(attr)
             self.set_change_event(attr_name, True, False)
 
