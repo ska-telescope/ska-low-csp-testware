@@ -167,7 +167,7 @@ class PcapReader(Device, FileSystemEventHandler):
         :param logging_level: Python logging level, such as "INFO", "DEBUG" etc.
         """
         self._logger.setLevel(logging_level)
-        self._logger.info("Logging level set to %s", logging_level)
+        self._logger.log(getattr(logging, logging_level), "Logging level set to %s", logging_level)
 
     def read_dynamic_attr(self, attr) -> tuple[str, float, AttrQuality]:
         """
@@ -240,7 +240,7 @@ class PcapReader(Device, FileSystemEventHandler):
             if self._attr_exists(attr_name):
                 continue
 
-            self._logger.info("Creating dynamic attribute %s", attr_name)
+            self._logger.debug("Creating dynamic attribute %s", attr_name)
             attr = attribute(
                 name=attr_name,
                 dtype=str,
@@ -264,13 +264,13 @@ class PcapReader(Device, FileSystemEventHandler):
                 if not self._attr_exists(attr_name):
                     continue
 
-                self._logger.info("Removing dynamic attribute %s", attr_name)
+                self._logger.debug("Removing dynamic attribute %s", attr_name)
                 self.remove_attribute(attr_name)
                 if attr_name in self._dynamic_attr_data:
                     del self._dynamic_attr_data[attr_name]
 
     def _update_file_info(self, file_name: str) -> None:
-        self._logger.info("Updating file info %s", file_name)
+        self._logger.debug("Updating file info %s", file_name)
 
         file_info = self.pcap_dir_path.joinpath(file_name).stat()
 
