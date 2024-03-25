@@ -2,8 +2,6 @@
 Module for the ``PcapReader`` TANGO device.
 """
 
-import base64
-import io
 import json
 import logging
 import re
@@ -12,11 +10,8 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Protocol
 
-import numpy as np
-import numpy.typing as npt
-import pandas as pd
 from ska_control_model import TestMode
 from tango import AttrQuality, AttrWriteType, DevFailed, DevState
 from tango.server import Device, attribute, command, device_property, run
@@ -29,23 +24,10 @@ from watchdog.events import (
 )
 from watchdog.observers import Observer
 
-from ska_low_csp_testware.common_types import PcapFileContents
 from ska_low_csp_testware.logging import configure_logging, get_logger
 from ska_low_csp_testware.low_cbf_vis import read_visibilities
 
 __all__ = ["PcapReader", "main"]
-
-
-def _encode_dataframe(df: pd.DataFrame) -> bytes:
-    buffer = io.BytesIO()
-    df.to_pickle(buffer)
-    return buffer.getvalue()
-
-
-def _encode_ndarray(array: npt.NDArray) -> bytes:
-    buffer = io.BytesIO()
-    np.save(buffer, array)
-    return buffer.getvalue()
 
 
 def _file_name_to_attr_name(file_name: str, suffix: str | None = None) -> str:
@@ -55,15 +37,15 @@ def _file_name_to_attr_name(file_name: str, suffix: str | None = None) -> str:
     return attr_name
 
 
-class CustomJsonEncoder(json.JSONEncoder):
+class JsonEncodable(Protocol):  # pylint: disable=too-few-public-methods
     """
-    Custom JSON encoder that allows encoding of ``bytes``.
+    Protocol for classes that can be encoded into JSON
     """
 
-    def default(self, o: Any) -> Any:
-        if isinstance(o, bytes):
-            return base64.b64encode(o).decode("ascii")
-        return super().encode(o)
+    def to_json(self) -> str:
+        """
+        Encode this instance to JSON.
+        """
 
 
 class PcapReader(Device, FileSystemEventHandler):
@@ -213,7 +195,7 @@ class PcapReader(Device, FileSystemEventHandler):
             test_mode=TestMode(self.test_mode),
             logger=self._logger,
         )
-        future.add_done_callback(partial(self._on_visibility_data, file_name))
+        future.add_done_callback(partial(self._on_visibility_data, file_name))  # type: ignore
 
     def on_any_event(self, event: FileSystemEvent) -> None:
         file_name = str(Path(event.src_path).relative_to(self.pcap_dir_path))
@@ -283,22 +265,14 @@ class PcapReader(Device, FileSystemEventHandler):
             self._dynamic_attr_data[attr_name] = attr_value
             self.push_change_event(attr_name, attr_value)
 
-    def _on_visibility_data(self, file_name: str, data: Future[PcapFileContents]) -> None:
+    def _on_visibility_data(self, file_name: str, data: Future[JsonEncodable]) -> None:
         if e := data.exception():
             self._logger.warning("Failed reading visibility data from file %s: %s", file_name, e)
             return
 
         self._logger.info("Finished reading visibility data from file %s", file_name)
-        file_contents = data.result()
-
         attr_name = _file_name_to_attr_name(file_name, suffix="data")
-        attr_value = json.dumps(
-            {
-                "headers": _encode_dataframe(file_contents.spead_headers),
-                "averaged_data": _encode_ndarray(file_contents.spead_data),
-            },
-            cls=CustomJsonEncoder,
-        )
+        attr_value = data.result().to_json()
 
         with self._lock:
             self._dynamic_attr_data[attr_name] = attr_value
