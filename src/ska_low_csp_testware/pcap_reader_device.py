@@ -87,13 +87,11 @@ class PcapReader(Device, FileSystemEventHandler):
     file_name_mapping = attribute(
         doc="Attribute exposing file information for all monitored PCAP files.",
         dtype=str,
-        label="PCAP files",
     )
 
     logging_level: str = attribute(  # type: ignore
         access=AttrWriteType.READ_WRITE,
         doc="Attribute that controls the logging level for this device.",
-        label="Logging level",
     )
 
     def __init__(self, *args, **kwargs):
@@ -247,7 +245,6 @@ class PcapReader(Device, FileSystemEventHandler):
                 name=attr_name,
                 dtype=str,
                 fget=self.read_dynamic_attr,
-                label=f"{file_name} - {attr_suffix}",
             )
             self.add_attribute(attr)
             self.set_change_event(attr_name, True, False)
