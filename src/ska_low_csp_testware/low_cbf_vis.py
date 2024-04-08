@@ -59,7 +59,7 @@ class VisibilityData:
         return json.dumps(
             {
                 "headers": _encode_dataframe(self.spead_headers),
-                "averaged_data": _encode_ndarray(self.spead_data),
+                "data": _encode_ndarray(self.spead_data),
             },
             cls=BytesEncoder,
         )
@@ -91,32 +91,37 @@ def _read_visibilities(
     pcap_file_path: Path,
     logger: logging.Logger | None = None,
 ) -> VisibilityData:
-    headers = []
-    averaged_data: dict[int, npt.NDArray[np.complex64]] = {}
+    header_heaps = []
+    data_heaps = []
+    data_dtype = None
 
     for heap, items in spead2_util.read_pcap_file(pcap_file_path, logger=logger):
         if heap.is_start_of_stream():
             row = {}
             for key, item in items.items():
                 row[key] = item.value
-            headers.append(row)
+            header_heaps.append(row)
             continue
 
         if heap.is_end_of_stream():
             continue
 
         channel_id = int.from_bytes(bytearray(heap.cnt.to_bytes(6, byteorder="big"))[2:4], "big")
-        if item := items.get("Corre", None):
-            data = item.value["VIS"]
-            if channel_id in averaged_data:
-                averaged_data[channel_id] = np.average(
-                    np.array([averaged_data[channel_id], data]),
-                    axis=0,
-                )
-            else:
-                averaged_data[channel_id] = data
+        time_offset = items["tOffs"].value
+        visibilities = items["Corre"].value["VIS"]
+
+        if data_dtype is None:
+            data_dtype = np.dtype(
+                [
+                    ("time_offset", "<i8"),
+                    ("channel_id", "<i4"),
+                    ("visibilities", "<c8", visibilities.shape),
+                ]
+            )
+
+        data_heaps.append((time_offset, channel_id, visibilities))
 
     return VisibilityData(
-        spead_headers=pd.DataFrame(headers),
-        spead_data=np.stack(list(averaged_data.values())),
+        spead_headers=pd.DataFrame(header_heaps),
+        spead_data=np.array(data_heaps, dtype=data_dtype),
     )
