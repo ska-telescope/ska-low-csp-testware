@@ -195,7 +195,7 @@ class PcapReader(Device, FileSystemEventHandler):
             test_mode=TestMode(self.test_mode),
             logger=self._logger,
         )
-        future.add_done_callback(partial(self._on_visibility_data, file_name))  # type: ignore
+        future.add_done_callback(partial(self._on_pcap_data, file_name))  # type: ignore
 
     def on_any_event(self, event: FileSystemEvent) -> None:
         file_name = str(Path(event.src_path).relative_to(self.pcap_dir_path))
@@ -265,7 +265,7 @@ class PcapReader(Device, FileSystemEventHandler):
             self._dynamic_attr_data[attr_name] = attr_value
             self.push_change_event(attr_name, attr_value)
 
-    def _on_visibility_data(self, file_name: str, data: Future[JsonEncodable]) -> None:
+    def _on_pcap_data(self, file_name: str, data: Future[JsonEncodable]) -> None:
         if e := data.exception():
             self._logger.warning("Failed reading visibility data from file %s: %s", file_name, e)
             return
