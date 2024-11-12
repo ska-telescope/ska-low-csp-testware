@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "ska-low-csp-testware"
+version = "0.1.0"
+description = ""
+authors = ["Sander Ploegsma <sander.ploegsma@topic.nl>"]
+readme = "README.md"
+
+[[tool.poetry.source]]
+name = "skao"
+url = "https://artefact.skao.int/repository/pypi-internal/simple"
+priority = "primary"
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "supplemental"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+ska-integration-test-harness = "^0.2.1"
+typing-extensions = "^4.12.2"
+
+[tool.poetry.group.dev.dependencies]
+jupyter = "^1.1.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

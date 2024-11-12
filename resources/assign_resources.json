@@ -1,0 +1,7 @@
+{
+  "interface": "https://schema.skao.int/ska-low-csp-assignresources/3.2",
+  "common": {
+    "subarray_id": 1
+  },
+  "lowcbf": {}
+}

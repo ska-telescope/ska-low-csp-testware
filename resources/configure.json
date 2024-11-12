@@ -1,0 +1,44 @@
+{
+  "interface": "https://schema.skao.int/ska-low-csp-configure/3.2",
+  "subarray": {
+    "subarray_name": "science period 23"
+  },
+  "common": {
+    "config_id": "config-id-abcdefg",
+    "subarray_id": 1
+  },
+  "lowcbf": {
+    "stations": {
+      "stns": [
+        [405, 1],
+        [393, 1],
+        [315, 1],
+        [261, 1],
+        [255, 1],
+        [243, 1]
+      ],
+      "stn_beams": [
+        {
+          "beam_id": 1,
+          "freq_ids": [397, 398, 399, 400, 401, 402, 403, 404],
+          "delay_poly": "low-cbf/delaypoly/0/delay_s01_b01"
+        }
+      ]
+    },
+    "vis": {
+      "fsp": {
+        "firmware": "vis:0.0.8-main.82aa561a:gitlab",
+        "fsp_ids": [1]
+      },
+      "stn_beams": [
+        {
+          "stn_beam_id": 1,
+          "host": [[0, "192.168.2.1"]],
+          "mac": [[0, "0c-42-a1-9c-a2-1b"]],
+          "port": [[0, 20000, 1]],
+          "integration_ms": 849
+        }
+      ]
+    }
+  }
+}

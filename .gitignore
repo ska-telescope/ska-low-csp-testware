@@ -1,0 +1,8 @@
+# Python generated files
+.cache
+__pycache__
+.coverage
+
+# IDE configuration
+.idea
+.vscode
