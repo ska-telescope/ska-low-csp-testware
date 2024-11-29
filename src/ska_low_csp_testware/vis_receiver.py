@@ -37,21 +37,6 @@ class VisibilityReceiverDevice(Device):
         doc="Port to listen on",
     )
 
-    logging_level: str = attribute(  # type: ignore
-        access=AttrWriteType.READ_WRITE,
-        doc="Attribute that controls the logging level for this device.",
-    )
-
-    mac_address: str = attribute(  # type: ignore
-        access=AttrWriteType.READ,
-        doc="MAC address the receiver is listening on.",
-    )
-
-    ip_address: str = attribute(  # type: ignore
-        access=AttrWriteType.READ,
-        doc="IP address the receiver is listening on.",
-    )
-
     def __init__(self, *args, **kwargs):
         self._logger = get_logger(self, __name__)
         self._lock = threading.Lock()
@@ -85,6 +70,11 @@ class VisibilityReceiverDevice(Device):
         self._logger.info("Device deinit completed")
         super().delete_device()
 
+    logging_level: str = attribute(  # type: ignore
+        access=AttrWriteType.READ_WRITE,
+        doc="Attribute that controls the logging level for this device.",
+    )
+
     def read_logging_level(self) -> str:
         """
         Read method for the ``logging_level`` device attribute.
@@ -104,28 +94,32 @@ class VisibilityReceiverDevice(Device):
             logging_level,
         )
 
-    def read_mac_address(self) -> tuple[str, float, AttrQuality]:
+    @attribute
+    def mac_address(self) -> tuple[str, float, AttrQuality]:
         """
-        Read method for the ``mac_address`` device attribute.
+        The MAC address of the interface the device is listening on.
         """
         if self.dev_state() != DevState.ON:
             return "", time.time(), AttrQuality.ATTR_INVALID
 
+        addresses = netifaces.ifaddresses(self.interface)
         return (
-            netifaces.ifaddresses(self.interface)[netifaces.AF_LINK],
+            addresses[netifaces.AF_LINK]["addr"][0],
             time.time(),
             AttrQuality.ATTR_VALID,
         )
 
-    def read_ip_address(self) -> tuple[str, float, AttrQuality]:
+    @attribute
+    def ip_address(self) -> tuple[str, float, AttrQuality]:
         """
-        Read method for the ``ip_address`` device attribute.
+        The IP address of the interface the device is listening on.
         """
         if self.dev_state() != DevState.ON:
             return "", time.time(), AttrQuality.ATTR_INVALID
 
+        addresses = netifaces.ifaddresses(self.interface)
         return (
-            netifaces.ifaddresses(self.interface)[netifaces.AF_INET],
+            addresses[netifaces.AF_INET]["addr"][0],
             time.time(),
             AttrQuality.ATTR_VALID,
         )
