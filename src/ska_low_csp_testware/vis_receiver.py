@@ -104,7 +104,7 @@ class VisibilityReceiverDevice(Device):
 
         addresses = netifaces.ifaddresses(self.interface)
         return (
-            addresses[netifaces.AF_LINK]["addr"][0],
+            addresses[netifaces.AF_LINK][0]["addr"],
             time.time(),
             AttrQuality.ATTR_VALID,
         )
@@ -119,7 +119,7 @@ class VisibilityReceiverDevice(Device):
 
         addresses = netifaces.ifaddresses(self.interface)
         return (
-            addresses[netifaces.AF_INET]["addr"][0],
+            addresses[netifaces.AF_INET][0]["addr"],
             time.time(),
             AttrQuality.ATTR_VALID,
         )
