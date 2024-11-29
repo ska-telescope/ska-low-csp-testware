@@ -112,7 +112,7 @@ class VisibilityReceiverDevice(Device):
             return "", time.time(), AttrQuality.ATTR_INVALID
 
         return (
-            netifaces.ifaddresses(self.interface)[netifaces.IF_LINK],
+            netifaces.ifaddresses(self.interface)[netifaces.AF_LINK],
             time.time(),
             AttrQuality.ATTR_VALID,
         )
@@ -125,7 +125,7 @@ class VisibilityReceiverDevice(Device):
             return "", time.time(), AttrQuality.ATTR_INVALID
 
         return (
-            netifaces.ifaddresses(self.interface)[netifaces.IF_INET],
+            netifaces.ifaddresses(self.interface)[netifaces.AF_INET],
             time.time(),
             AttrQuality.ATTR_VALID,
         )
@@ -142,7 +142,8 @@ def main(*args: str, **kwargs: str) -> int:
     """
     configure_logging()
     return cast(
-        int, VisibilityReceiverDevice.run_server(args=args or None, **kwargs)
+        int,
+        VisibilityReceiverDevice.run_server(args=args or None, **kwargs),
     )
 
 
