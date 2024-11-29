@@ -1,0 +1,14 @@
+global:
+  minikube: true
+
+ska-low-csp-testware:
+  pcap_reader:
+    pcap_dir: /app # Since no data is mounted, make sure the pcap_dir points to an existing directory
+
+ska-tango-base:
+  enabled: true
+  deviceServers:
+    tangotest:
+      instances: []
+  itango:
+    enabled: true

@@ -1,0 +1,27 @@
+global:
+  exposeAllDS: true
+  minikube: false
+  operator: true
+  tango_host: ska-low-csp-databaseds:10000
+
+taranta:
+  enabled: false
+
+ska-tango-base:
+  enabled: false
+
+ska-low-csp-testware:
+  vis_receiver:
+    interface: net1
+
+  deviceServers:
+    visreceiver:
+      nodeSelector:
+        kubernetes.io/hostname: clp-k8s-fpga-worker-1
+
+  annotations:
+    k8s.v1.cni.cncf.io/networks: kube-system/sdn-macvlan
+
+  tolerations:
+    - key: skao.int/node-type
+      value: low-cbf-fpga

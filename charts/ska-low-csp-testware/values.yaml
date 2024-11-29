@@ -1,0 +1,108 @@
+display: ":0"
+xauthority: "~/.Xauthority"
+
+enabled: true
+
+system: SW-infrastructure
+subsystem: ska-low-csp
+telescope: SKA-low
+
+labels:
+  app: ska-low-csp-testware
+
+global:
+  minikube: true
+  tango_host: databaseds-tango-base-test:10000
+  retry:
+    - "--tries=10"
+    - "--sleep=5"
+  DEBUG: 5678
+
+livenessProbe:
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  timeoutSeconds: 3
+  successThreshold: 1
+  failureThreshold: 3
+readinessProbe:
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  timeoutSeconds: 3
+  successThreshold: 1
+  failureThreshold: 3
+
+dsconfig:
+  configuration_file: data/configuration.json
+  timeout: 300s
+  image:
+    registry: artefact.skao.int
+    image: ska-tango-images-tango-dsconfig
+    tag: 1.5.13
+    pullPolicy: IfNotPresent
+
+itango:
+  image:
+    registry: artefact.skao.int
+    image: ska-tango-images-tango-itango
+    tag: 9.4.3
+    pullPolicy: IfNotPresent
+
+image:
+  registry: artefact.skao.int
+  image: ska-low-csp-testware
+  tag: 0.0.1
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 2
+    memory: 8Gi
+  limits:
+    cpu: 4
+    memory: 16Gi
+
+vis_receiver:
+  interface: eth1
+  port: 9999
+  output_dir: /tmp
+
+deviceServers:
+  visreceiver:
+    name: "visreceiver-{{.Release.Name}}"
+    function: testware
+    domain: ska-low-csp
+    instances: ["1"]
+    command: vis_receiver
+    server:
+      name: vis_receiver
+      instances:
+        - name: "1"
+          classes:
+            - name: VisReceiverDevice
+              devices:
+                - name: "low-csp/testware/vis-receiver-1"
+                  properties:
+                    - name: interface
+                      values:
+                        - "{{.Values.vis_receiver.interface}}"
+                    - name: port
+                      values:
+                        - "{{ .Values.vis_receiver.port }}"
+                    - name: output_dir
+                      values:
+                        - "{{.Values.vis_receiver.output_dir}}"
+    depends_on:
+      - device: sys/database/2
+    image:
+      registry: "{{.Values.image.registry}}"
+      image: "{{.Values.image.image}}"
+      tag: "{{.Values.image.tag | default .Chart.AppVersion}}"
+      pullPolicy: "{{.Values.image.pullPolicy}}"
+
+nodeSelector: {}
+
+affinity: {}
+
+annotations: {}
+
+tolerations: []
