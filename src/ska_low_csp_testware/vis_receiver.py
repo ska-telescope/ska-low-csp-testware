@@ -141,7 +141,9 @@ def main(*args: str, **kwargs: str) -> int:
     :return: exit code
     """
     configure_logging()
-    return cast(int, VisibilityReceiverDevice.run_server(args=args or None, **kwargs))
+    return cast(
+        int, VisibilityReceiverDevice.run_server(args=args or None, **kwargs)
+    )
 
 
 if __name__ == "__main__":
