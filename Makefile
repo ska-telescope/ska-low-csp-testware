@@ -32,7 +32,8 @@ include .make/helm.mk
 
 K8S_USE_HELMFILE = true
 K8S_HELMFILE = helmfile.d/helmfile.yaml
-K8S_HELMFILE_ENV ?= minikube
+K8S_HELMFILE_ENV ?= digital-signal-psi
+KUBE_NAMESPACE ?= ska-low-csp-testware
 
 include .make/k8s.mk
 
@@ -43,4 +44,3 @@ include .make/k8s.mk
 include .make/oci.mk
 
 CI_JOB_ID ?= local
-

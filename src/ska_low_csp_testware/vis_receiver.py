@@ -4,25 +4,17 @@ Module for the ``VisibilityReceiverDevice``.
 """
 
 import logging
-import subprocess
 import threading
 import time
 from typing import cast
 
 import netifaces
-from tango import AttrQuality, AttrWriteType, DevState, EnsureOmniThread
-from tango.server import Device, attribute, command, device_property
+from tango import AttrQuality, AttrWriteType, DevState
+from tango.server import Device, attribute, device_property
 
 from ska_low_csp_testware.logging import configure_logging, get_logger
 
-
-def _capture(interface: str, port: int, path: str):
-    with EnsureOmniThread():
-        process = subprocess.Popen(  # pylint: disable=consider-using-with
-            ["tcpdump", "-i", interface, "-w", path, "udp", "port", str(port)],
-            shell=True,
-        )
-        process.wait()
+__all__ = ["VisibilityReceiverDevice", "main"]
 
 
 class VisibilityReceiverDevice(Device):
@@ -30,9 +22,20 @@ class VisibilityReceiverDevice(Device):
     TANGO device that uses tcpdump to capture received visibilities.
     """
 
-    output_dir: str = device_property()  # type: ignore
-    interface: str = device_property()  # type: ignore
-    port: int = device_property()  # type: ignore
+    output_dir: str = device_property(  # type: ignore
+        default_value="/tmp",
+        doc="Path to the directory where the captured files are stored.",
+    )
+
+    interface: str = device_property(  # type: ignore
+        mandatory=True,
+        doc="Network interface to listen on.",
+    )
+
+    port: int = device_property(  # type: ignore
+        default_value=9999,
+        doc="Port to listen on",
+    )
 
     logging_level: str = attribute(  # type: ignore
         access=AttrWriteType.READ_WRITE,
@@ -61,15 +64,23 @@ class VisibilityReceiverDevice(Device):
         self.set_state(DevState.INIT)
         self._logger.info("Device init started")
 
+        all_interfaces = netifaces.interfaces()
+        if self.interface not in all_interfaces:
+            self.set_state(DevState.FAULT)
+            status = (
+                f"Unknown network interface '{self.interface}', "
+                f"available interfaces: %{', '.join(all_interfaces)}"
+            )
+            self.set_status(status)
+            self._logger.error(status)
+            return
+
         self.set_state(DevState.ON)
         self.set_status("Not capturing")
         self._logger.info("Device init complete")
 
     def delete_device(self) -> None:
         self._logger.info("Device deinit started")
-
-        self._logger.info("Stopping background task executor")
-        self._executor.shutdown(cancel_futures=True)
 
         self._logger.info("Device deinit completed")
         super().delete_device()
@@ -97,7 +108,7 @@ class VisibilityReceiverDevice(Device):
         """
         Read method for the ``mac_address`` device attribute.
         """
-        if self.interface not in netifaces.interfaces():
+        if self.dev_state() != DevState.ON:
             return "", time.time(), AttrQuality.ATTR_INVALID
 
         return (
@@ -110,7 +121,7 @@ class VisibilityReceiverDevice(Device):
         """
         Read method for the ``ip_address`` device attribute.
         """
-        if self.interface not in netifaces.interfaces():
+        if self.dev_state() != DevState.ON:
             return "", time.time(), AttrQuality.ATTR_INVALID
 
         return (
@@ -118,34 +129,6 @@ class VisibilityReceiverDevice(Device):
             time.time(),
             AttrQuality.ATTR_VALID,
         )
-
-    @command
-    def StartCapture(
-        self, capture_file_name: str
-    ):  # pylint: disable=invalid-name
-        """
-        Start a new capture.
-        """
-        self._logger.info("Start capturing to %s", capture_file_name)
-        with self._lock:
-            self._capture_thread = threading.Thread(
-                target=_capture,
-                args=[self.interface, self.port, capture_file_name],
-                daemon=True,
-            )
-            self._capture_thread.start()
-        self.set_status(f"Capturing {capture_file_name}")
-
-    @command
-    def StopCapture(self):  # pylint: disable=invalid-name
-        """
-        Stop a running capture.
-        """
-        self._logger.info("Stop capturing")
-        with self._lock:
-            if self._capture_thread is not None:
-                self._capture_thread.join()
-        self.set_status("Not capturing")
 
 
 def main(*args: str, **kwargs: str) -> int:
@@ -158,9 +141,7 @@ def main(*args: str, **kwargs: str) -> int:
     :return: exit code
     """
     configure_logging()
-    return cast(
-        int, VisibilityReceiverDevice.run_server(args=args or None, **kwargs)
-    )
+    return cast(int, VisibilityReceiverDevice.run_server(args=args or None, **kwargs))
 
 
 if __name__ == "__main__":

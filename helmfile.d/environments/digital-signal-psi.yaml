@@ -2,15 +2,22 @@ global:
   exposeAllDS: true
   minikube: false
   operator: true
-  tango_host: ska-low-csp-databaseds:10000
 
 taranta:
-  enabled: false
+  enabled: true
 
 ska-tango-base:
-  enabled: false
+  enabled: true
 
 ska-low-csp-testware:
+  global:
+    annotations:
+      k8s.v1.cni.cncf.io/networks: ska-low-csp-ci/cbf-pst
+
+  image:
+    registry: registry.gitlab.com/ska-telescope/ska-low-csp-testware
+    tag: 0.0.1-dev.c43acfa50
+
   vis_receiver:
     interface: net1
 
@@ -20,7 +27,7 @@ ska-low-csp-testware:
         kubernetes.io/hostname: clp-k8s-fpga-worker-1
 
   annotations:
-    k8s.v1.cni.cncf.io/networks: kube-system/sdn-macvlan
+    k8s.v1.cni.cncf.io/networks: ska-low-csp-ci/cbf-pst
 
   tolerations:
     - key: skao.int/node-type

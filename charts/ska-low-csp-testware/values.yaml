@@ -63,8 +63,6 @@ resources:
 
 vis_receiver:
   interface: eth1
-  port: 9999
-  output_dir: /tmp
 
 deviceServers:
   visreceiver:
@@ -74,23 +72,17 @@ deviceServers:
     instances: ["1"]
     command: vis_receiver
     server:
-      name: vis_receiver
+      name: VisibilityReceiverDevice
       instances:
         - name: "1"
           classes:
-            - name: VisReceiverDevice
+            - name: VisibilityReceiverDevice
               devices:
                 - name: "low-csp/testware/vis-receiver-1"
                   properties:
                     - name: interface
                       values:
                         - "{{.Values.vis_receiver.interface}}"
-                    - name: port
-                      values:
-                        - "{{ .Values.vis_receiver.port }}"
-                    - name: output_dir
-                      values:
-                        - "{{.Values.vis_receiver.output_dir}}"
     depends_on:
       - device: sys/database/2
     image:
