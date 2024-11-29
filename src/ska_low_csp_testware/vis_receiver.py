@@ -112,7 +112,7 @@ class VisibilityReceiverDevice(Device):
             return "", time.time(), AttrQuality.ATTR_INVALID
 
         return (
-            netifaces.ifaddresses(self.interface)[netifaces.IF_INET],
+            netifaces.ifaddresses(self.interface)[netifaces.IF_LINK],
             time.time(),
             AttrQuality.ATTR_VALID,
         )
