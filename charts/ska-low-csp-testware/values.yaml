@@ -65,7 +65,7 @@ packet_capture:
   interface: eth1
 
 deviceServers:
-  packet_capture:
+  packetcapture:
     name: "packet-capture-{{.Release.Name}}"
     function: testware
     domain: ska-low-csp

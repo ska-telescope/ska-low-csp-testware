@@ -16,13 +16,13 @@ ska-low-csp-testware:
 
   image:
     registry: registry.gitlab.com/ska-telescope/ska-low-csp-testware
-    tag: 0.0.1-dev.cf2388254
+    tag: 0.0.1-dev.c79d8a1f0
 
   packet_capture:
     interface: net1
 
   deviceServers:
-    packet_capture:
+    packetcapture:
       nodeSelector:
         kubernetes.io/hostname: clp-k8s-fpga-worker-1
 
