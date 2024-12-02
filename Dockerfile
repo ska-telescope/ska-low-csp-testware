@@ -5,6 +5,8 @@ ARG POETRY_VERSION=1.8.4
 FROM $BUILD_IMAGE AS buildenv
 FROM $BASE_IMAGE
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 USER root
 
 RUN poetry self update "${POETRY_VERSION}"
