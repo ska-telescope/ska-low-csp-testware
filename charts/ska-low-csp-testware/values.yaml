@@ -61,28 +61,28 @@ resources:
     cpu: 4
     memory: 16Gi
 
-vis_receiver:
+packet_capture:
   interface: eth1
 
 deviceServers:
-  visreceiver:
-    name: "visreceiver-{{.Release.Name}}"
+  packet_capture:
+    name: "packet-capture-{{.Release.Name}}"
     function: testware
     domain: ska-low-csp
     instances: ["1"]
-    command: vis_receiver
+    command: packet_capture
     server:
-      name: VisibilityReceiverDevice
+      name: PacketCapture
       instances:
         - name: "1"
           classes:
-            - name: VisibilityReceiverDevice
+            - name: PacketCapture
               devices:
-                - name: "low-csp/testware/vis-receiver-1"
+                - name: "low-csp/testware/packet-capture-1"
                   properties:
                     - name: interface
                       values:
-                        - "{{.Values.vis_receiver.interface}}"
+                        - "{{.Values.packet_capture.interface}}"
     depends_on:
       - device: sys/database/2
     image:

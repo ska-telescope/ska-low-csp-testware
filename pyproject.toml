@@ -7,7 +7,7 @@ license = "BSD-3-Clause"
 readme = "README.md"
 
 [tool.poetry.scripts]
-vis_receiver = 'ska_low_csp_testware.vis_receiver:main'
+packet_capture = 'ska_low_csp_testware.packet_capture:main'
 
 [[tool.poetry.source]]
 name = "skao"
@@ -23,6 +23,7 @@ python = "^3.10"
 pytango = "^10.0.0"
 ska-ser-logging = "^0.4.3"
 netifaces = "^0.11.0"
+pyshark = "^0.6"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.4.2"

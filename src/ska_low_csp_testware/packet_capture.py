@@ -1,25 +1,27 @@
 # pylint: disable=c-extension-no-member
 """
-Module for the ``VisibilityReceiverDevice``.
+Module for the ``PacketCapture``.
 """
 
 import logging
+import os
 import threading
 import time
 from typing import cast
 
 import netifaces
+import pyshark
 from tango import AttrQuality, AttrWriteType, DevState
-from tango.server import Device, attribute, device_property
+from tango.server import Device, attribute, command, device_property
 
 from ska_low_csp_testware.logging import configure_logging, get_logger
 
-__all__ = ["VisibilityReceiverDevice", "main"]
+__all__ = ["PacketCapture", "main"]
 
 
-class VisibilityReceiverDevice(Device):
+class PacketCapture(Device):
     """
-    TANGO device that uses tcpdump to capture received visibilities.
+    TANGO device that uses tshark to capture network packets.
     """
 
     output_dir: str = device_property(  # type: ignore
@@ -40,6 +42,7 @@ class VisibilityReceiverDevice(Device):
     def __init__(self, *args, **kwargs):
         self._logger = get_logger(self, __name__)
         self._lock = threading.Lock()
+        self._cancel = threading.Event()
         self._capture_thread: threading.Thread | None = None
 
         super().__init__(*args, **kwargs)
@@ -66,6 +69,15 @@ class VisibilityReceiverDevice(Device):
 
     def delete_device(self) -> None:
         self._logger.info("Device deinit started")
+
+        if self._capture_thread is not None:
+            self._logger.debug("Cancelling active capture thread")
+            self._cancel.set()
+            self._capture_thread.join()
+            self._logger.debug("Capture thread cancelled")
+
+        self._cancel.clear()
+        self._capture_thread = None
 
         self._logger.info("Device deinit completed")
         super().delete_device()
@@ -124,6 +136,54 @@ class VisibilityReceiverDevice(Device):
             AttrQuality.ATTR_VALID,
         )
 
+    @command
+    def StartCapture(  # pylint: disable=invalid-name
+        self,
+        output_file_name: str,
+    ):
+        """
+        Handler for the ``StartCapture`` TANGO command.
+        """
+        self._cancel.clear()
+        self._capture_thread = threading.Thread(
+            target=self._capture,
+            args=(output_file_name),
+        )
+        self._logger.debug("Starting capture thread")
+        self._capture_thread.start()
+        self._logger.debug("Capture thread started")
+
+    @command
+    def StopCapture(self):  # pylint: disable=invalid-name
+        """
+        Handler for the ``StopCapture`` TANGO command.
+        """
+        if self._capture_thread is not None:
+            self._logger.debug("Stopping capture thread")
+            self._cancel.set()
+            self._capture_thread.join()
+            self._logger.debug("Capture thread stopped")
+
+        self._cancel.clear()
+        self._capture_thread = None
+
+    def _capture(self, output_file_name: str):
+        capture = pyshark.LiveCapture(
+            interface=self.interface,
+            output_file=os.path.join(self.output_dir, output_file_name),
+            only_summaries=True,
+        )
+
+        self._logger.debug("Starting capture")
+
+        for packet in capture.sniff_continuously():
+            self._logger.debug("Received packet: %s", packet)
+
+            if self._cancel.is_set():
+                self._logger.debug("Stopping capture")
+                capture.close()
+                break
+
 
 def main(*args: str, **kwargs: str) -> int:
     """
@@ -137,7 +197,7 @@ def main(*args: str, **kwargs: str) -> int:
     configure_logging()
     return cast(
         int,
-        VisibilityReceiverDevice.run_server(args=args or None, **kwargs),
+        PacketCapture.run_server(args=args or None, **kwargs),
     )
 
 

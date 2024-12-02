@@ -9,7 +9,7 @@ USER root
 
 RUN poetry self update "${POETRY_VERSION}"
 
-RUN apt-get update && apt-get install git tcpdump python3-dev g++ -y
+RUN apt-get update && apt-get install git tshark python3-dev g++ -y
 
 RUN poetry config virtualenvs.create false
 
